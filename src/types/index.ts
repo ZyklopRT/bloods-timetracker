@@ -1,12 +1,13 @@
 import {
   SlashCommandBuilder,
+  SlashCommandSubcommandsOnlyBuilder,
   ChatInputCommandInteraction,
   Client,
   Collection,
 } from "discord.js";
 
 export interface Command {
-  data: SlashCommandBuilder;
+  data: SlashCommandBuilder | SlashCommandSubcommandsOnlyBuilder;
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
 }
 
@@ -28,13 +29,13 @@ export interface TimeTrackingSession {
 
 export interface GuildSettings {
   guildId: string;
-  trackingChannelId?: string;
+  trackingChannelId?: string | null;
   showOnlineMessages: boolean;
   showOfflineMessages: boolean;
   showTrackingList: boolean;
-  trackingListMessageId?: string;
+  trackingListMessageId?: string | null;
   // Enhanced settings
-  botPrefix?: string;
+  botPrefix: string;
   autoDeleteMessages: boolean;
   messageDeleteDelay: number; // in seconds
   requireTimeMinimum: boolean;
@@ -42,8 +43,8 @@ export interface GuildSettings {
   allowSelfTracking: boolean;
   enableLeaderboard: boolean;
   leaderboardUpdateInterval: number; // in minutes
-  timezone?: string;
-  embedColor?: string;
+  timezone: string;
+  embedColor: string;
   createdAt: Date;
   updatedAt: Date;
 }

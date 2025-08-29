@@ -1,5 +1,11 @@
-import { EmbedBuilder, User } from "discord.js";
+import {
+  EmbedBuilder,
+  User,
+  ChatInputCommandInteraction,
+  ButtonInteraction,
+} from "discord.js";
 import { TrackingListUser } from "../types";
+import { database } from "../database/database";
 
 /**
  * Formats milliseconds into a human-readable time string
@@ -239,4 +245,37 @@ export function hasAdminPermission(guildMember: any): boolean {
  */
 export function isValidSnowflake(id: string): boolean {
   return /^\d{17,19}$/.test(id);
+}
+
+/**
+ * Validates if the current channel is allowed for time tracking
+ * @param interaction - Discord interaction
+ * @returns Promise<boolean> - true if allowed, false if not
+ */
+export async function validateTrackingChannel(
+  interaction: ChatInputCommandInteraction | ButtonInteraction
+): Promise<boolean> {
+  const guildId = interaction.guildId!;
+  const channelId = interaction.channelId;
+
+  // Get guild settings
+  const settings = database.getGuildSettings(guildId);
+
+  // If no tracking channel is set, allow all channels
+  if (!settings?.trackingChannelId) {
+    return true;
+  }
+
+  // Check if current channel matches the designated tracking channel
+  if (channelId === settings.trackingChannelId) {
+    return true;
+  }
+
+  // If we reach here, the user is in the wrong channel
+  await interaction.reply({
+    content: `❌ **Zeiterfassung nur in bestimmtem Kanal erlaubt!**\n\nBitte verwende die Zeiterfassung nur in <#${settings.trackingChannelId}>.`,
+    flags: interaction.isButton() ? undefined : 64, // MessageFlags.Ephemeral for slash commands
+  });
+
+  return false;
 }

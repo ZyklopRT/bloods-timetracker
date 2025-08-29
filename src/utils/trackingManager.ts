@@ -6,10 +6,15 @@ import {
   MessageFlags,
   ChatInputCommandInteraction,
   ButtonInteraction,
+  TextChannel,
 } from "discord.js";
 import { database } from "../database/database";
 import { TimeTrackingSession } from "../types";
-import { generateSessionId, formatDetailedTime } from "./helpers";
+import {
+  generateSessionId,
+  formatDetailedTime,
+  validateTrackingChannel,
+} from "./helpers";
 
 export class TimeTrackingManager {
   /**
@@ -90,6 +95,13 @@ export class TimeTrackingManager {
     interaction: ChatInputCommandInteraction | ButtonInteraction
   ): Promise<void> {
     try {
+      // Validate if tracking is allowed in this channel (only for button interactions, slash commands already validated)
+      if (
+        interaction.isButton() &&
+        !(await validateTrackingChannel(interaction))
+      ) {
+        return;
+      }
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         const errorMsg = "⚠️ Du hast keine aktive Zeiterfassung.";
@@ -184,6 +196,10 @@ export class TimeTrackingManager {
     interaction: ButtonInteraction
   ): Promise<void> {
     try {
+      // Validate if tracking is allowed in this channel
+      if (!(await validateTrackingChannel(interaction))) {
+        return;
+      }
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         await interaction.reply({
@@ -247,6 +263,10 @@ export class TimeTrackingManager {
     interaction: ButtonInteraction
   ): Promise<void> {
     try {
+      // Validate if tracking is allowed in this channel
+      if (!(await validateTrackingChannel(interaction))) {
+        return;
+      }
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         await interaction.reply({
@@ -307,16 +327,44 @@ export class TimeTrackingManager {
   }
 
   /**
-   * Sends start notification in the guild channel
+   * Sends start notification in the designated tracking channel or current channel
    */
   private async sendStartNotification(
     user: User,
     interaction: ChatInputCommandInteraction
   ): Promise<void> {
     try {
-      // Send public message in the same channel where the command was used
-      if (interaction.channel && "send" in interaction.channel) {
-        await interaction.channel.send({
+      const guildId = interaction.guildId!;
+      const settings = database.getGuildSettings(guildId);
+
+      // Skip notifications if disabled
+      if (settings && !settings.showOnlineMessages) {
+        return;
+      }
+
+      let targetChannel = interaction.channel;
+
+      // Use designated tracking channel if set and available
+      if (settings?.trackingChannelId) {
+        try {
+          const trackingChannel = (await interaction.client.channels.fetch(
+            settings.trackingChannelId
+          )) as TextChannel;
+          if (trackingChannel && trackingChannel.type === 0) {
+            // GuildText
+            targetChannel = trackingChannel;
+          }
+        } catch (error) {
+          console.warn(
+            `Could not fetch tracking channel ${settings.trackingChannelId}:`,
+            error
+          );
+          // Fallback to current channel
+        }
+      }
+
+      if (targetChannel && "send" in targetChannel) {
+        await targetChannel.send({
           content: `🎮 **${user.displayName}** spielt jetzt!`,
         });
       }
@@ -326,7 +374,7 @@ export class TimeTrackingManager {
   }
 
   /**
-   * Sends stop notification in the guild channel
+   * Sends stop notification in the designated tracking channel or current channel
    */
   private async sendStopNotification(
     user: User,
@@ -334,10 +382,37 @@ export class TimeTrackingManager {
     interaction: ChatInputCommandInteraction | ButtonInteraction
   ): Promise<void> {
     try {
-      // Send public message in the same channel
-      const channel = interaction.channel;
-      if (channel && "send" in channel) {
-        await channel.send({
+      const guildId = interaction.guildId!;
+      const settings = database.getGuildSettings(guildId);
+
+      // Skip notifications if disabled
+      if (settings && !settings.showOfflineMessages) {
+        return;
+      }
+
+      let targetChannel = interaction.channel;
+
+      // Use designated tracking channel if set and available
+      if (settings?.trackingChannelId) {
+        try {
+          const trackingChannel = (await interaction.client.channels.fetch(
+            settings.trackingChannelId
+          )) as TextChannel;
+          if (trackingChannel && trackingChannel.type === 0) {
+            // GuildText
+            targetChannel = trackingChannel;
+          }
+        } catch (error) {
+          console.warn(
+            `Could not fetch tracking channel ${settings.trackingChannelId}:`,
+            error
+          );
+          // Fallback to current channel
+        }
+      }
+
+      if (targetChannel && "send" in targetChannel) {
+        await targetChannel.send({
           content: `🔴 **${
             user.displayName
           }** spielt nicht mehr und hat **${formatDetailedTime(
