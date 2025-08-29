@@ -185,27 +185,32 @@ export function createUserStatsEmbed(
   lastSeen: Date
 ): EmbedBuilder {
   return new EmbedBuilder()
-    .setTitle(`📊 Zeiterfassung Statistiken - ${user.displayName}`)
+    .setTitle(`Zeiterfassung Statistiken - ${user.displayName}`)
     .setColor(0x0099ff)
     .addFields(
       {
-        name: "⏱️ Gesamte Spielzeit",
+        name: "Gesamte Spielzeit",
         value: formatDetailedTime(totalTime),
         inline: true,
       },
       {
-        name: "📈 Abgeschlossene Sessions",
+        name: "Abgeschlossene Sessions",
         value: sessionsCount.toString(),
         inline: true,
       },
       {
-        name: "👀 Zuletzt gesehen",
-        value: `<t:${Math.floor(lastSeen.getTime() / 1000)}:R>`,
+        name: "\u200B",
+        value: "\u200B",
         inline: true,
       },
       {
-        name: "⏱️ Durchschnittliche Session",
+        name: "Durchschnittliche Session",
         value: formatDetailedTime(totalTime / sessionsCount),
+        inline: true,
+      },
+      {
+        name: "Zuletzt gesehen",
+        value: `<t:${Math.floor(lastSeen.getTime() / 1000)}:R>`,
         inline: true,
       }
     )

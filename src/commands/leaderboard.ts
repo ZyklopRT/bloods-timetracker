@@ -103,13 +103,7 @@ const command: Command = {
         0
       );
 
-      embed.addFields({
-        name: "📊 Zusammenfassung",
-        value: `**Gesamte Spielzeit:** ${formatDetailedTime(
-          totalTimeSum
-        )}\n**Gesamte Sessions:** ${totalSessions}`,
-        inline: false,
-      });
+
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
