@@ -10,7 +10,7 @@ import { Command } from "../types";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("leaderboard")
-    .setDescription("Zeige die Zeiterfassung-Bestenliste")
+    .setDescription("Zeige die On-Off-Bestenliste")
     .addIntegerOption((option) =>
       option
         .setName("limit")
@@ -41,14 +41,13 @@ const command: Command = {
 
       if (results.length === 0) {
         await interaction.editReply({
-          content:
-            "📊 Noch keine Zeiterfassungsdaten für diesen Server gefunden!",
+          content: "📊 Noch keine On-Offsdaten für diesen Server gefunden!",
         });
         return;
       }
 
       const embed = new EmbedBuilder()
-        .setTitle("🏆 Zeiterfassung Bestenliste")
+        .setTitle("🏆 On-Off Bestenliste")
         .setColor(0xffd700)
         .setTimestamp()
         .setFooter({

@@ -10,7 +10,7 @@ import { Command } from "../types";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("status")
-    .setDescription("Zeige aktuell aktive Zeiterfassung-Sessions"),
+    .setDescription("Zeige aktuell aktive On-Off-Sessions"),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
@@ -20,7 +20,7 @@ const command: Command = {
       const activeSessions = database.getAllActiveSessions(guildId);
 
       const embed = new EmbedBuilder()
-        .setTitle("⏰ Aktueller Zeiterfassung Status")
+        .setTitle("⏰ Aktueller On-Off Status")
         .setColor(0x00ae86)
         .setTimestamp();
 

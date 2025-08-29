@@ -5,10 +5,10 @@ import { Command } from "../types";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("play")
-    .setDescription("Starte die Zeiterfassung"),
+    .setDescription("Starte die On-Off"),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const trackingManager = new TimeTrackingManager();
+    const trackingManager = new TimeTrackingManager(interaction.client);
     await trackingManager.startTracking(
       interaction.user.id,
       interaction.guildId!,

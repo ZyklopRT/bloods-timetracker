@@ -138,7 +138,7 @@ async function handleButtonInteraction(interaction: any): Promise<void> {
   ) {
     // Import the tracking manager here to avoid circular dependency
     const { TimeTrackingManager } = await import("../utils/trackingManager");
-    const trackingManager = new TimeTrackingManager();
+    const trackingManager = new TimeTrackingManager(interaction.client);
 
     if (customId === "pause_tracking") {
       await trackingManager.pauseTracking(

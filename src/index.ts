@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { ExtendedClient, Command } from "./types";
 import { database } from "./database/database";
+import { LiveTrackingManager } from "./utils/liveTrackingManager";
 
 // Create Discord client with necessary intents
 const client = new Client({
@@ -83,6 +84,20 @@ client.once(Events.ClientReady, (readyClient) => {
 
   // Set bot status
   readyClient.user.setActivity("GTA Roleplay Time Tracking", { type: 3 }); // Type 3 = Watching
+
+  // Initialize live tracking manager and set up periodic updates
+  const liveTrackingManager = new LiveTrackingManager(readyClient);
+
+  // Update live messages every 30 seconds
+  setInterval(async () => {
+    try {
+      await liveTrackingManager.updateAllLiveMessages();
+    } catch (error) {
+      console.error("Error during periodic live message update:", error);
+    }
+  }, 30000); // 30 seconds
+
+  console.log("✅ Live tracking periodic updates started (every 30 seconds)");
 });
 
 // Error handling

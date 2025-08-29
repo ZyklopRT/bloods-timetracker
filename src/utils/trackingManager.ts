@@ -7,6 +7,7 @@ import {
   ChatInputCommandInteraction,
   ButtonInteraction,
   TextChannel,
+  Client,
 } from "discord.js";
 import { database } from "../database/database";
 import { TimeTrackingSession } from "../types";
@@ -15,8 +16,15 @@ import {
   formatDetailedTime,
   validateTrackingChannel,
 } from "./helpers";
+import { LiveTrackingManager } from "./liveTrackingManager";
 
 export class TimeTrackingManager {
+  private liveTrackingManager: LiveTrackingManager;
+
+  constructor(client: Client) {
+    this.liveTrackingManager = new LiveTrackingManager(client);
+  }
+
   /**
    * Starts time tracking for a user
    */
@@ -30,7 +38,7 @@ export class TimeTrackingManager {
       const existingSession = database.getActiveSession(userId, guildId);
       if (existingSession) {
         await interaction.reply({
-          content: `⚠️ Du hast bereits eine aktive Zeiterfassung! Verwende die Buttons unten, um sie zu steuern.`,
+          content: `⚠️ Du hast bereits eine aktive On-Off! Verwende die Buttons unten, um sie zu steuern.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -69,18 +77,21 @@ export class TimeTrackingManager {
 
       // Send ephemeral reply with controls
       await interaction.reply({
-        content: `🕒 **Zeiterfassung gestartet!**\n\nDeine Session ist jetzt aktiv. Verwende die Buttons unten, um deine Session zu steuern:`,
+        content: `🕒 **On-Off gestartet!**\n\nDeine Session ist jetzt aktiv. Verwende die Buttons unten, um deine Session zu steuern:`,
         components: [row],
         flags: MessageFlags.Ephemeral,
       });
 
       // Send public notification that user started playing
       await this.sendStartNotification(interaction.user, interaction);
+
+      // Update live tracking message
+      await this.liveTrackingManager.updateLiveMessage(guildId);
     } catch (error) {
       console.error("Error starting tracking:", error);
       await interaction.reply({
         content:
-          "❌ Zeiterfassung konnte nicht gestartet werden. Bitte versuche es erneut.",
+          "❌ On-Off konnte nicht gestartet werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -104,7 +115,7 @@ export class TimeTrackingManager {
       }
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
-        const errorMsg = "⚠️ Du hast keine aktive Zeiterfassung.";
+        const errorMsg = "⚠️ Du hast keine aktive On-Off.";
 
         if (interaction.isButton()) {
           await interaction.reply({
@@ -143,8 +154,11 @@ export class TimeTrackingManager {
         interaction
       );
 
+      // Update live tracking message
+      await this.liveTrackingManager.updateLiveMessage(guildId);
+
       // Update the ephemeral message briefly, then delete it
-      const replyMessage = `🔴 **Zeiterfassung beendet!**\n\nDu hast **${formatDetailedTime(
+      const replyMessage = `🔴 **On-Off beendet!**\n\nDu hast **${formatDetailedTime(
         adjustedDuration
       )}** gespielt. Tolle Session! 🎉\n\n*Diese Nachricht wird in 3 Sekunden gelöscht...*`;
 
@@ -171,7 +185,7 @@ export class TimeTrackingManager {
     } catch (error) {
       console.error("Error stopping tracking:", error);
       const errorMsg =
-        "❌ Zeiterfassung konnte nicht beendet werden. Bitte versuche es erneut.";
+        "❌ On-Off konnte nicht beendet werden. Bitte versuche es erneut.";
 
       if (interaction.isButton()) {
         await interaction.reply({
@@ -203,7 +217,7 @@ export class TimeTrackingManager {
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         await interaction.reply({
-          content: "⚠️ Du hast keine aktive Zeiterfassung.",
+          content: "⚠️ Du hast keine aktive On-Off.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -211,7 +225,7 @@ export class TimeTrackingManager {
 
       if (session.status === "paused") {
         await interaction.reply({
-          content: "⚠️ Deine Zeiterfassung ist bereits pausiert.",
+          content: "⚠️ Deine On-Off ist bereits pausiert.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -241,14 +255,17 @@ export class TimeTrackingManager {
 
       await interaction.update({
         content:
-          "⏸️ **Zeiterfassung pausiert**\n\nDeine Session ist pausiert. Klicke **Fortsetzen** um fortzufahren oder **Stoppen** um die Session zu beenden.",
+          "⏸️ **On-Off pausiert**\n\nDeine Session ist pausiert. Klicke **Fortsetzen** um fortzufahren oder **Stoppen** um die Session zu beenden.",
         components: [row],
       });
+
+      // Update live tracking message
+      await this.liveTrackingManager.updateLiveMessage(guildId);
     } catch (error) {
       console.error("Error pausing tracking:", error);
       await interaction.reply({
         content:
-          "❌ Zeiterfassung konnte nicht pausiert werden. Bitte versuche es erneut.",
+          "❌ On-Off konnte nicht pausiert werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -270,7 +287,7 @@ export class TimeTrackingManager {
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         await interaction.reply({
-          content: "⚠️ Du hast keine aktive Zeiterfassung.",
+          content: "⚠️ Du hast keine aktive On-Off.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -278,7 +295,7 @@ export class TimeTrackingManager {
 
       if (session.status === "active") {
         await interaction.reply({
-          content: "⚠️ Deine Zeiterfassung ist bereits aktiv.",
+          content: "⚠️ Deine On-Off ist bereits aktiv.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -313,14 +330,17 @@ export class TimeTrackingManager {
 
       await interaction.update({
         content:
-          "▶️ **Zeiterfassung fortgesetzt**\n\nDeine Session ist wieder aktiv. Klicke **Pausieren** zum Pausieren oder **Stoppen** um die Session zu beenden.",
+          "▶️ **On-Off fortgesetzt**\n\nDeine Session ist wieder aktiv. Klicke **Pausieren** zum Pausieren oder **Stoppen** um die Session zu beenden.",
         components: [row],
       });
+
+      // Update live tracking message
+      await this.liveTrackingManager.updateLiveMessage(guildId);
     } catch (error) {
       console.error("Error resuming tracking:", error);
       await interaction.reply({
         content:
-          "❌ Zeiterfassung konnte nicht fortgesetzt werden. Bitte versuche es erneut.",
+          "❌ On-Off konnte nicht fortgesetzt werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }

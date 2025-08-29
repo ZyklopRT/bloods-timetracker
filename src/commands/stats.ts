@@ -11,7 +11,7 @@ import { Command } from "../types";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("stats")
-    .setDescription("Zeige Zeiterfassung-Statistiken")
+    .setDescription("Zeige On-Off-Statistiken")
     .addUserOption((option) =>
       option
         .setName("user")
@@ -32,7 +32,7 @@ const command: Command = {
 
       if (!userStats || userStats.sessionsCount === 0) {
         await interaction.reply({
-          content: `📊 ${targetUser.displayName} hat noch keine Zeiterfassung-Sessions abgeschlossen.`,
+          content: `📊 ${targetUser.displayName} hat noch keine On-Off-Sessions abgeschlossen.`,
           flags: MessageFlags.Ephemeral,
         });
         return;

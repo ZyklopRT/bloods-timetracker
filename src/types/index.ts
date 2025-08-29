@@ -34,6 +34,8 @@ export interface GuildSettings {
   showOfflineMessages: boolean;
   showTrackingList: boolean;
   trackingListMessageId?: string | null;
+  liveChannelId?: string | null;
+  liveMessageId?: string | null;
   // Enhanced settings
   botPrefix: string;
   autoDeleteMessages: boolean;

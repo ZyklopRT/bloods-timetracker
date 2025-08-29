@@ -81,6 +81,37 @@ export class DatabaseManager {
         FOREIGN KEY (sessionId) REFERENCES sessions (id)
       )
     `);
+
+    // Run migrations for new columns
+    this.runMigrations();
+  }
+
+  private runMigrations(): void {
+    try {
+      // Add liveChannelId column if it doesn't exist
+      this.db.exec(`
+        ALTER TABLE guild_settings 
+        ADD COLUMN liveChannelId TEXT DEFAULT NULL
+      `);
+      console.log("✅ Added liveChannelId column to guild_settings");
+    } catch (error: any) {
+      if (!error.message.includes("duplicate column name")) {
+        console.warn("Migration warning for liveChannelId:", error.message);
+      }
+    }
+
+    try {
+      // Add liveMessageId column if it doesn't exist
+      this.db.exec(`
+        ALTER TABLE guild_settings 
+        ADD COLUMN liveMessageId TEXT DEFAULT NULL
+      `);
+      console.log("✅ Added liveMessageId column to guild_settings");
+    } catch (error: any) {
+      if (!error.message.includes("duplicate column name")) {
+        console.warn("Migration warning for liveMessageId:", error.message);
+      }
+    }
   }
 
   // Session methods
@@ -204,6 +235,8 @@ export class DatabaseManager {
       showOfflineMessages: Boolean(result.showOfflineMessages),
       showTrackingList: Boolean(result.showTrackingList),
       trackingListMessageId: result.trackingListMessageId,
+      liveChannelId: result.liveChannelId,
+      liveMessageId: result.liveMessageId,
       botPrefix: result.botPrefix || "!",
       autoDeleteMessages: Boolean(result.autoDeleteMessages),
       messageDeleteDelay: result.messageDeleteDelay || 30,
@@ -226,9 +259,9 @@ export class DatabaseManager {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO guild_settings 
       (guildId, trackingChannelId, showOnlineMessages, showOfflineMessages, showTrackingList, trackingListMessageId,
-       botPrefix, autoDeleteMessages, messageDeleteDelay, requireTimeMinimum, minimumTimeMinutes,
+       liveChannelId, liveMessageId, botPrefix, autoDeleteMessages, messageDeleteDelay, requireTimeMinimum, minimumTimeMinutes,
        allowSelfTracking, enableLeaderboard, leaderboardUpdateInterval, timezone, embedColor, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
               COALESCE((SELECT createdAt FROM guild_settings WHERE guildId = ?), ?), ?)
     `);
 
@@ -239,6 +272,8 @@ export class DatabaseManager {
       settings.showOfflineMessages ? 1 : 0,
       settings.showTrackingList ? 1 : 0,
       settings.trackingListMessageId || null,
+      settings.liveChannelId || null,
+      settings.liveMessageId || null,
       settings.botPrefix || "!",
       settings.autoDeleteMessages ? 1 : 0,
       settings.messageDeleteDelay || 30,

@@ -191,7 +191,7 @@ export function createUserStatsEmbed(
   lastSeen: Date
 ): EmbedBuilder {
   return new EmbedBuilder()
-    .setTitle(`Zeiterfassung Statistiken - ${user.displayName}`)
+    .setTitle(`On-Off Statistiken - ${user.displayName}`)
     .setColor(0x0099ff)
     .addFields(
       {
@@ -273,7 +273,7 @@ export async function validateTrackingChannel(
 
   // If we reach here, the user is in the wrong channel
   await interaction.reply({
-    content: `❌ **Zeiterfassung nur in bestimmtem Kanal erlaubt!**\n\nBitte verwende die Zeiterfassung nur in <#${settings.trackingChannelId}>.`,
+    content: `❌ **On-Off nur in bestimmtem Kanal erlaubt!**\n\nBitte verwende die On-Off nur in <#${settings.trackingChannelId}>.`,
     flags: interaction.isButton() ? undefined : 64, // MessageFlags.Ephemeral for slash commands
   });
 
