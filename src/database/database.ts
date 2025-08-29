@@ -42,6 +42,16 @@ export class DatabaseManager {
         showOfflineMessages INTEGER DEFAULT 1,
         showTrackingList INTEGER DEFAULT 1,
         trackingListMessageId TEXT,
+        botPrefix TEXT DEFAULT '!',
+        autoDeleteMessages INTEGER DEFAULT 0,
+        messageDeleteDelay INTEGER DEFAULT 30,
+        requireTimeMinimum INTEGER DEFAULT 0,
+        minimumTimeMinutes INTEGER DEFAULT 5,
+        allowSelfTracking INTEGER DEFAULT 1,
+        enableLeaderboard INTEGER DEFAULT 1,
+        leaderboardUpdateInterval INTEGER DEFAULT 60,
+        timezone TEXT DEFAULT 'UTC',
+        embedColor TEXT DEFAULT '#0099ff',
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )
@@ -120,7 +130,7 @@ export class DatabaseManager {
       status: result.status,
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt),
-    };
+    } as TimeTrackingSession;
   }
 
   updateSession(
@@ -172,7 +182,7 @@ export class DatabaseManager {
       status: result.status,
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt),
-    }));
+    } as TimeTrackingSession));
   }
 
   // Guild settings methods
@@ -191,6 +201,16 @@ export class DatabaseManager {
       showOfflineMessages: Boolean(result.showOfflineMessages),
       showTrackingList: Boolean(result.showTrackingList),
       trackingListMessageId: result.trackingListMessageId,
+      botPrefix: result.botPrefix || "!",
+      autoDeleteMessages: Boolean(result.autoDeleteMessages),
+      messageDeleteDelay: result.messageDeleteDelay || 30,
+      requireTimeMinimum: Boolean(result.requireTimeMinimum),
+      minimumTimeMinutes: result.minimumTimeMinutes || 5,
+      allowSelfTracking: Boolean(result.allowSelfTracking),
+      enableLeaderboard: Boolean(result.enableLeaderboard),
+      leaderboardUpdateInterval: result.leaderboardUpdateInterval || 60,
+      timezone: result.timezone || "UTC",
+      embedColor: result.embedColor || "#0099ff",
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt),
     };
@@ -202,8 +222,11 @@ export class DatabaseManager {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO guild_settings 
-      (guildId, trackingChannelId, showOnlineMessages, showOfflineMessages, showTrackingList, trackingListMessageId, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM guild_settings WHERE guildId = ?), ?), ?)
+      (guildId, trackingChannelId, showOnlineMessages, showOfflineMessages, showTrackingList, trackingListMessageId,
+       botPrefix, autoDeleteMessages, messageDeleteDelay, requireTimeMinimum, minimumTimeMinutes,
+       allowSelfTracking, enableLeaderboard, leaderboardUpdateInterval, timezone, embedColor, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+              COALESCE((SELECT createdAt FROM guild_settings WHERE guildId = ?), ?), ?)
     `);
 
     stmt.run(
@@ -213,6 +236,16 @@ export class DatabaseManager {
       settings.showOfflineMessages ? 1 : 0,
       settings.showTrackingList ? 1 : 0,
       settings.trackingListMessageId || null,
+      settings.botPrefix || "!",
+      settings.autoDeleteMessages ? 1 : 0,
+      settings.messageDeleteDelay || 30,
+      settings.requireTimeMinimum ? 1 : 0,
+      settings.minimumTimeMinutes || 5,
+      settings.allowSelfTracking ? 1 : 0,
+      settings.enableLeaderboard ? 1 : 0,
+      settings.leaderboardUpdateInterval || 60,
+      settings.timezone || "UTC",
+      settings.embedColor || "#0099ff",
       settings.guildId,
       now,
       now

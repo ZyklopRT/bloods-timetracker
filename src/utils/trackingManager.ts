@@ -2,22 +2,15 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
-  TextChannel,
   User,
   MessageFlags,
   ChatInputCommandInteraction,
   ButtonInteraction,
 } from "discord.js";
 import { database } from "../index";
-import { TimeTrackingSession, TrackingListUser } from "../types";
+import { TimeTrackingSession } from "../types";
 import {
   generateSessionId,
-  createSessionStartEmbed,
-  createSessionEndEmbed,
-  createSessionPauseEmbed,
-  createSessionResumeEmbed,
-  createTrackingListEmbed,
   formatDetailedTime,
 } from "./helpers";
 
@@ -35,7 +28,7 @@ export class TimeTrackingManager {
       const existingSession = database.getActiveSession(userId, guildId);
       if (existingSession) {
         await interaction.reply({
-          content: `⚠️ You already have an active time tracking session! Use the pause/stop buttons in your DMs or run \`/stop\` to end it.`,
+          content: `⚠️ Du hast bereits eine aktive Zeiterfassung! Verwende die Buttons unten, um sie zu steuern.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -54,24 +47,37 @@ export class TimeTrackingManager {
 
       database.createSession(newSession);
 
-      // Send initial reply
+      // Create control buttons for ephemeral message
+      const pauseButton = new ButtonBuilder()
+        .setCustomId("pause_tracking")
+        .setLabel("Pausieren")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("⏸️");
+
+      const stopButton = new ButtonBuilder()
+        .setCustomId("stop_tracking")
+        .setLabel("Stoppen")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("⏹️");
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        pauseButton,
+        stopButton
+      );
+
+      // Send ephemeral reply with controls
       await interaction.reply({
-        content: "🟢 Time tracking started! Check your DMs for controls.",
+        content: `🕒 **Zeiterfassung gestartet!**\n\nDeine Session ist jetzt aktiv. Verwende die Buttons unten, um deine Session zu steuern:`,
+        components: [row],
         flags: MessageFlags.Ephemeral,
       });
 
-      // Send control buttons via DM
-      await this.sendControlButtons(interaction.user, sessionId);
-
-      // Send notification in channel (if enabled)
-      await this.sendStartNotification(interaction.user, guildId);
-
-      // Update tracking list (if enabled)
-      await this.updateTrackingList(guildId);
+      // Send public notification that user started playing
+      await this.sendStartNotification(interaction.user, interaction);
     } catch (error) {
       console.error("Error starting tracking:", error);
       await interaction.reply({
-        content: "❌ Failed to start time tracking. Please try again.",
+        content: "❌ Zeiterfassung konnte nicht gestartet werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -88,10 +94,19 @@ export class TimeTrackingManager {
     try {
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
-        await interaction.reply({
-          content: "⚠️ You don't have an active time tracking session.",
-          flags: MessageFlags.Ephemeral,
-        });
+        const errorMsg = "⚠️ Du hast keine aktive Zeiterfassung.";
+        
+        if (interaction.isButton()) {
+          await interaction.reply({
+            content: errorMsg,
+            flags: MessageFlags.Ephemeral,
+          });
+        } else {
+          await interaction.reply({
+            content: errorMsg,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
         return;
       }
 
@@ -111,16 +126,15 @@ export class TimeTrackingManager {
       // Update user stats
       database.updateUserStats(userId, guildId, adjustedDuration);
 
-      // Reply to interaction
-      const replyMessage = `🔴 Time tracking stopped! You were active for **${formatDetailedTime(
+      // Update the ephemeral message to show completion
+      const replyMessage = `🔴 **Zeiterfassung beendet!**\n\nDu hast **${formatDetailedTime(
         adjustedDuration
-      )}**.`;
+      )}** gespielt. Tolle Session! 🎉`;
 
       if (interaction.isButton()) {
         await interaction.update({
           content: replyMessage,
           components: [],
-          embeds: [],
         });
       } else {
         await interaction.reply({
@@ -128,19 +142,9 @@ export class TimeTrackingManager {
           flags: MessageFlags.Ephemeral,
         });
       }
-
-      // Send notification in channel (if enabled)
-      await this.sendStopNotification(
-        interaction.user,
-        guildId,
-        adjustedDuration
-      );
-
-      // Update tracking list (if enabled)
-      await this.updateTrackingList(guildId);
     } catch (error) {
       console.error("Error stopping tracking:", error);
-      const errorMsg = "❌ Failed to stop time tracking. Please try again.";
+      const errorMsg = "❌ Zeiterfassung konnte nicht beendet werden. Bitte versuche es erneut.";
 
       if (interaction.isButton()) {
         await interaction.reply({
@@ -168,7 +172,7 @@ export class TimeTrackingManager {
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         await interaction.reply({
-          content: "⚠️ You don't have an active time tracking session.",
+          content: "⚠️ Du hast keine aktive Zeiterfassung.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -176,7 +180,7 @@ export class TimeTrackingManager {
 
       if (session.status === "paused") {
         await interaction.reply({
-          content: "⚠️ Your tracking is already paused.",
+          content: "⚠️ Deine Zeiterfassung ist bereits pausiert.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -189,13 +193,13 @@ export class TimeTrackingManager {
       // Update buttons to show resume option
       const resumeButton = new ButtonBuilder()
         .setCustomId("resume_tracking")
-        .setLabel("Resume")
+        .setLabel("Fortsetzen")
         .setStyle(ButtonStyle.Success)
         .setEmoji("▶️");
 
       const stopButton = new ButtonBuilder()
         .setCustomId("stop_tracking")
-        .setLabel("Stop")
+        .setLabel("Stoppen")
         .setStyle(ButtonStyle.Danger)
         .setEmoji("⏹️");
 
@@ -205,20 +209,13 @@ export class TimeTrackingManager {
       );
 
       await interaction.update({
-        content:
-          "⏸️ Time tracking paused. Click **Resume** to continue or **Stop** to end your session.",
+        content: "⏸️ **Zeiterfassung pausiert**\n\nDeine Session ist pausiert. Klicke **Fortsetzen** um fortzufahren oder **Stoppen** um die Session zu beenden.",
         components: [row],
       });
-
-      // Send notification in channel (if enabled)
-      await this.sendPauseNotification(interaction.user, guildId);
-
-      // Update tracking list (if enabled)
-      await this.updateTrackingList(guildId);
     } catch (error) {
       console.error("Error pausing tracking:", error);
       await interaction.reply({
-        content: "❌ Failed to pause time tracking. Please try again.",
+        content: "❌ Zeiterfassung konnte nicht pausiert werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -236,7 +233,7 @@ export class TimeTrackingManager {
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         await interaction.reply({
-          content: "⚠️ You don't have an active time tracking session.",
+          content: "⚠️ Du hast keine aktive Zeiterfassung.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -244,7 +241,7 @@ export class TimeTrackingManager {
 
       if (session.status === "active") {
         await interaction.reply({
-          content: "⚠️ Your tracking is already active.",
+          content: "⚠️ Deine Zeiterfassung ist bereits aktiv.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -262,13 +259,13 @@ export class TimeTrackingManager {
       // Update buttons back to pause/stop
       const pauseButton = new ButtonBuilder()
         .setCustomId("pause_tracking")
-        .setLabel("Pause")
+        .setLabel("Pausieren")
         .setStyle(ButtonStyle.Secondary)
         .setEmoji("⏸️");
 
       const stopButton = new ButtonBuilder()
         .setCustomId("stop_tracking")
-        .setLabel("Stop")
+        .setLabel("Stoppen")
         .setStyle(ButtonStyle.Danger)
         .setEmoji("⏹️");
 
@@ -278,235 +275,34 @@ export class TimeTrackingManager {
       );
 
       await interaction.update({
-        content:
-          "▶️ Time tracking resumed! Click **Pause** to pause or **Stop** to end your session.",
+        content: "▶️ **Zeiterfassung fortgesetzt**\n\nDeine Session ist wieder aktiv. Klicke **Pausieren** zum Pausieren oder **Stoppen** um die Session zu beenden.",
         components: [row],
       });
-
-      // Send notification in channel (if enabled)
-      await this.sendResumeNotification(interaction.user, guildId);
-
-      // Update tracking list (if enabled)
-      await this.updateTrackingList(guildId);
     } catch (error) {
       console.error("Error resuming tracking:", error);
       await interaction.reply({
-        content: "❌ Failed to resume time tracking. Please try again.",
+        content: "❌ Zeiterfassung konnte nicht fortgesetzt werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
   }
 
-  /**
-   * Sends control buttons to user's DM
-   */
-  private async sendControlButtons(
-    user: User,
-    sessionId: string
-  ): Promise<void> {
-    try {
-      const pauseButton = new ButtonBuilder()
-        .setCustomId("pause_tracking")
-        .setLabel("Pause")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("⏸️");
 
-      const stopButton = new ButtonBuilder()
-        .setCustomId("stop_tracking")
-        .setLabel("Stop")
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji("⏹️");
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        pauseButton,
-        stopButton
-      );
-
-      await user.send({
-        content:
-          "🕒 **Time Tracking Controls**\n\nYour time tracking session has started! Use the buttons below to control your session:",
-        components: [row],
-      });
-    } catch (error) {
-      console.error("Failed to send DM to user:", error);
-      // User might have DMs disabled
-    }
-  }
 
   /**
    * Sends start notification in the guild channel
    */
   private async sendStartNotification(
     user: User,
-    guildId: string
+    interaction: ChatInputCommandInteraction
   ): Promise<void> {
     try {
-      const settings = database.getGuildSettings(guildId);
-      if (!settings?.showOnlineMessages || !settings.trackingChannelId) return;
-
-      const guild = user.client.guilds.cache.get(guildId);
-      if (!guild) return;
-
-      const channel = guild.channels.cache.get(
-        settings.trackingChannelId
-      ) as TextChannel;
-      if (!channel) return;
-
-      const embed = createSessionStartEmbed(user);
-      await channel.send({ embeds: [embed] });
+      // Send public message in the same channel where the command was used
+      await interaction.followUp({
+        content: `🎮 **${user.displayName}** spielt jetzt!`,
+      });
     } catch (error) {
       console.error("Failed to send start notification:", error);
-    }
-  }
-
-  /**
-   * Sends stop notification in the guild channel
-   */
-  private async sendStopNotification(
-    user: User,
-    guildId: string,
-    duration: number
-  ): Promise<void> {
-    try {
-      const settings = database.getGuildSettings(guildId);
-      if (!settings?.showOfflineMessages || !settings.trackingChannelId) return;
-
-      const guild = user.client.guilds.cache.get(guildId);
-      if (!guild) return;
-
-      const channel = guild.channels.cache.get(
-        settings.trackingChannelId
-      ) as TextChannel;
-      if (!channel) return;
-
-      const embed = createSessionEndEmbed(user, duration);
-      await channel.send({ embeds: [embed] });
-    } catch (error) {
-      console.error("Failed to send stop notification:", error);
-    }
-  }
-
-  /**
-   * Sends pause notification in the guild channel
-   */
-  private async sendPauseNotification(
-    user: User,
-    guildId: string
-  ): Promise<void> {
-    try {
-      const settings = database.getGuildSettings(guildId);
-      if (!settings?.showOnlineMessages || !settings.trackingChannelId) return;
-
-      const guild = user.client.guilds.cache.get(guildId);
-      if (!guild) return;
-
-      const channel = guild.channels.cache.get(
-        settings.trackingChannelId
-      ) as TextChannel;
-      if (!channel) return;
-
-      const embed = createSessionPauseEmbed(user);
-      await channel.send({ embeds: [embed] });
-    } catch (error) {
-      console.error("Failed to send pause notification:", error);
-    }
-  }
-
-  /**
-   * Sends resume notification in the guild channel
-   */
-  private async sendResumeNotification(
-    user: User,
-    guildId: string
-  ): Promise<void> {
-    try {
-      const settings = database.getGuildSettings(guildId);
-      if (!settings?.showOnlineMessages || !settings.trackingChannelId) return;
-
-      const guild = user.client.guilds.cache.get(guildId);
-      if (!guild) return;
-
-      const channel = guild.channels.cache.get(
-        settings.trackingChannelId
-      ) as TextChannel;
-      if (!channel) return;
-
-      const embed = createSessionResumeEmbed(user);
-      await channel.send({ embeds: [embed] });
-    } catch (error) {
-      console.error("Failed to send resume notification:", error);
-    }
-  }
-
-  /**
-   * Updates the tracking list message
-   */
-  private async updateTrackingList(guildId: string): Promise<void> {
-    try {
-      const settings = database.getGuildSettings(guildId);
-      if (!settings?.showTrackingList || !settings.trackingChannelId) return;
-
-      const activeSessions = database.getAllActiveSessions(guildId);
-      if (activeSessions.length === 0 && !settings.trackingListMessageId)
-        return;
-
-      const guild = activeSessions[0]?.userId ? activeSessions[0].userId : null;
-
-      if (!guild) return;
-
-      const guildObj = await (activeSessions[0] as any).client?.guilds.fetch(
-        guildId
-      );
-      if (!guildObj) return;
-
-      const channel = guildObj.channels.cache.get(
-        settings.trackingChannelId
-      ) as TextChannel;
-      if (!channel) return;
-
-      // Create tracking list data
-      const trackingUsers: TrackingListUser[] = [];
-
-      for (const session of activeSessions) {
-        try {
-          const user = await guildObj.members.fetch(session.userId);
-          trackingUsers.push({
-            userId: session.userId,
-            username: user.displayName,
-            startTime: session.startTime,
-            status: session.status,
-          });
-        } catch (error) {
-          console.error(`Failed to fetch user ${session.userId}:`, error);
-        }
-      }
-
-      const embed = createTrackingListEmbed(trackingUsers);
-
-      // Update or create the tracking list message
-      if (settings.trackingListMessageId) {
-        try {
-          const message = await channel.messages.fetch(
-            settings.trackingListMessageId
-          );
-          await message.edit({ embeds: [embed] });
-        } catch (error) {
-          // Message might have been deleted, create a new one
-          const newMessage = await channel.send({ embeds: [embed] });
-          database.createOrUpdateGuildSettings({
-            ...settings,
-            trackingListMessageId: newMessage.id,
-          });
-        }
-      } else {
-        const newMessage = await channel.send({ embeds: [embed] });
-        database.createOrUpdateGuildSettings({
-          ...settings,
-          trackingListMessageId: newMessage.id,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to update tracking list:", error);
     }
   }
 }

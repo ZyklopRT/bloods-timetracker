@@ -31,8 +31,8 @@ for (const file of commandFiles) {
   }
 }
 
-// Validate required environment variables
-const requiredEnvVars = ["DISCORD_TOKEN", "CLIENT_ID"];
+// Validate required environment variables (updated to match Discord developer docs)
+const requiredEnvVars = ["TOKEN", "APPLICATION_ID"];
 const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
 
 if (missingVars.length > 0) {
@@ -43,11 +43,12 @@ if (missingVars.length > 0) {
   console.error(
     "Please check your .env file and ensure all required variables are set."
   );
+  console.error("Required: TOKEN (bot token), APPLICATION_ID (application ID)");
   process.exit(1);
 }
 
 // Construct and prepare an instance of the REST module
-const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
+const rest = new REST().setToken(process.env["TOKEN"]!);
 
 // Deploy commands
 (async (): Promise<void> => {
@@ -59,12 +60,12 @@ const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
     let data: any;
 
     // Deploy globally or to a specific guild
-    if (process.env.GUILD_ID) {
+    if (process.env["GUILD_ID"]) {
       // Deploy to specific guild (faster for development)
       data = await rest.put(
         Routes.applicationGuildCommands(
-          process.env.CLIENT_ID!,
-          process.env.GUILD_ID
+          process.env["APPLICATION_ID"]!,
+          process.env["GUILD_ID"]
         ),
         { body: commands }
       );
@@ -74,7 +75,7 @@ const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
     } else {
       // Deploy globally (takes up to 1 hour to propagate)
       data = await rest.put(
-        Routes.applicationCommands(process.env.CLIENT_ID!),
+        Routes.applicationCommands(process.env["APPLICATION_ID"]!),
         { body: commands }
       );
       console.log(

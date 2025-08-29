@@ -26,7 +26,7 @@ export default {
         console.error(`❌ Error executing ${interaction.commandName}:`, error);
 
         const errorMessage = {
-          content: "There was an error while executing this command!",
+          content: "Es gab einen Fehler beim Ausführen dieses Befehls!",
           flags: MessageFlags.Ephemeral,
         };
 
@@ -45,7 +45,7 @@ export default {
         console.error("❌ Error handling button interaction:", error);
 
         const errorMessage = {
-          content: "There was an error processing your request!",
+          content: "Es gab einen Fehler beim Verarbeiten deiner Anfrage!",
           flags: MessageFlags.Ephemeral,
         };
 
@@ -85,9 +85,9 @@ async function handleButtonInteraction(interaction: any): Promise<void> {
       interaction
     );
   } else {
-    await interaction.reply({
-      content: "Unknown button interaction!",
-      flags: MessageFlags.Ephemeral,
-    });
+            await interaction.reply({
+          content: "Unbekannte Button-Interaktion!",
+          flags: MessageFlags.Ephemeral,
+        });
   }
 }

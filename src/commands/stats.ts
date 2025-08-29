@@ -17,7 +17,7 @@ const command: Command = {
         .setName("user")
         .setDescription("User to view stats for (defaults to yourself)")
         .setRequired(false)
-    ),
+    ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     try {

@@ -52,7 +52,7 @@ export function formatDetailedTime(ms: number): string {
   if (remainingSeconds > 0 || parts.length === 0)
     parts.push(`${remainingSeconds} second${remainingSeconds > 1 ? "s" : ""}`);
 
-  if (parts.length === 1) return parts[0];
+  if (parts.length === 1) return parts[0] || "";
   if (parts.length === 2) return parts.join(" and ");
 
   const lastPart = parts.pop();

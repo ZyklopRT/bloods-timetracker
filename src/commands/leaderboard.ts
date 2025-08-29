@@ -2,7 +2,6 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   EmbedBuilder,
-  MessageFlags,
 } from "discord.js";
 import { database } from "../index";
 import { formatDetailedTime } from "../utils/helpers";
@@ -19,7 +18,7 @@ const command: Command = {
         .setMinValue(1)
         .setMaxValue(20)
         .setRequired(false)
-    ),
+    ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
@@ -97,11 +96,11 @@ const command: Command = {
 
       // Add summary field
       const totalTimeSum = results.reduce(
-        (sum, result) => sum + result.totalTimeMs,
+        (sum: number, result: any) => sum + result.totalTimeMs,
         0
       );
       const totalSessions = results.reduce(
-        (sum, result) => sum + result.sessionsCount,
+        (sum: number, result: any) => sum + result.sessionsCount,
         0
       );
 

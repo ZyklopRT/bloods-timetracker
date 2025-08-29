@@ -6,7 +6,7 @@ import { ExtendedClient, Command } from "./types";
 import { DatabaseManager } from "./database/database";
 
 // Initialize database
-const dbPath = process.env.DATABASE_PATH || "./data/timetracker.db";
+const dbPath = process.env["DATABASE_PATH"] || "./data/timetracker.db";
 export const database = new DatabaseManager(dbPath);
 
 // Create Discord client with necessary intents
@@ -112,8 +112,8 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-// Validate required environment variables
-const requiredEnvVars = ["DISCORD_TOKEN", "CLIENT_ID"];
+// Validate required environment variables (updated to match Discord developer docs)
+const requiredEnvVars = ["TOKEN", "APPLICATION_ID"];
 const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
 
 if (missingVars.length > 0) {
@@ -124,11 +124,13 @@ if (missingVars.length > 0) {
   console.error(
     "Please check your .env file and ensure all required variables are set."
   );
+  console.error("Required: TOKEN (bot token), APPLICATION_ID (application ID)");
+  console.error("Optional: PUBLIC_KEY (for interaction verification)");
   process.exit(1);
 }
 
 // Login to Discord
-client.login(process.env.DISCORD_TOKEN).catch((error) => {
+client.login(process.env["TOKEN"]).catch((error) => {
   console.error("❌ Failed to login to Discord:", error);
   process.exit(1);
 });

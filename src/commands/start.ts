@@ -1,11 +1,18 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
+import { 
+  SlashCommandBuilder, 
+  ChatInputCommandInteraction,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags
+} from "discord.js";
 import { TimeTrackingManager } from "../utils/trackingManager";
 import { Command } from "../types";
 
 const command: Command = {
   data: new SlashCommandBuilder()
-    .setName("start")
-    .setDescription("Start time tracking for GTA roleplay"),
+    .setName("play")
+    .setDescription("Starte die Zeiterfassung"),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const trackingManager = new TimeTrackingManager();

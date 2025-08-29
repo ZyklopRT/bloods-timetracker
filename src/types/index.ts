@@ -33,6 +33,17 @@ export interface GuildSettings {
   showOfflineMessages: boolean;
   showTrackingList: boolean;
   trackingListMessageId?: string;
+  // Enhanced settings
+  botPrefix?: string;
+  autoDeleteMessages: boolean;
+  messageDeleteDelay: number; // in seconds
+  requireTimeMinimum: boolean;
+  minimumTimeMinutes: number;
+  allowSelfTracking: boolean;
+  enableLeaderboard: boolean;
+  leaderboardUpdateInterval: number; // in minutes
+  timezone?: string;
+  embedColor?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,5 +68,5 @@ export interface TrackingListUser {
   userId: string;
   username: string;
   startTime: Date;
-  status: "active" | "paused";
+  status: "active" | "paused" | "stopped";
 }
