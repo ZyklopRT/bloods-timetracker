@@ -3,14 +3,14 @@ import {
   ChatInputCommandInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { database } from "../index";
+import { database } from "../database/database";
 import { formatTime } from "../utils/helpers";
 import { Command } from "../types";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("status")
-    .setDescription("Show currently active time tracking sessions"),
+    .setDescription("Zeige aktuell aktive Zeiterfassung-Sessions"),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
@@ -20,12 +20,12 @@ const command: Command = {
       const activeSessions = database.getAllActiveSessions(guildId);
 
       const embed = new EmbedBuilder()
-        .setTitle("⏰ Current Time Tracking Status")
+        .setTitle("⏰ Aktueller Zeiterfassung Status")
         .setColor(0x00ae86)
         .setTimestamp();
 
       if (activeSessions.length === 0) {
-        embed.setDescription("🔕 No users are currently being tracked.");
+        embed.setDescription("🔕 Aktuell werden keine Benutzer erfasst.");
         await interaction.editReply({ embeds: [embed] });
         return;
       }
@@ -42,7 +42,7 @@ const command: Command = {
           username = member.displayName;
         } catch (error) {
           // User might have left the server
-          username = `User ${session.userId.slice(0, 8)}...`;
+          username = `Benutzer ${session.userId.slice(0, 8)}...`;
         }
 
         const currentTime = Date.now() - session.startTime.getTime();
@@ -51,12 +51,12 @@ const command: Command = {
           currentTime - (session.pausedTime || 0)
         );
         const statusEmoji = session.status === "active" ? "🟢" : "⏸️";
-        const statusText = session.status === "active" ? "Active" : "Paused";
+        const statusText = session.status === "active" ? "Aktiv" : "Pausiert";
 
         statusEntries.push(
           `${statusEmoji} **${username}** - ${statusText}\n` +
-            `⏱️ Current session: ${formatTime(adjustedTime)}\n` +
-            `🕐 Started: <t:${Math.floor(
+            `⏱️ Aktuelle Session: ${formatTime(adjustedTime)}\n` +
+            `🕐 Gestartet: <t:${Math.floor(
               session.startTime.getTime() / 1000
             )}:R>\n`
         );
@@ -64,16 +64,15 @@ const command: Command = {
 
       embed.setDescription(statusEntries.join("\n"));
       embed.setFooter({
-        text: `${activeSessions.length} user${
-          activeSessions.length > 1 ? "s" : ""
-        } currently tracked`,
+        text: `${activeSessions.length} Benutzer aktuell erfasst`,
       });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error("Error in status command:", error);
       await interaction.editReply({
-        content: "❌ Failed to retrieve tracking status. Please try again.",
+        content:
+          "❌ Status konnte nicht abgerufen werden. Bitte versuche es erneut.",
       });
     }
   },

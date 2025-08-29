@@ -4,18 +4,20 @@ import {
   MessageFlags,
   User,
 } from "discord.js";
-import { database } from "../index";
+import { database } from "../database/database";
 import { createUserStatsEmbed } from "../utils/helpers";
 import { Command } from "../types";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("stats")
-    .setDescription("View time tracking statistics")
+    .setDescription("Zeige Zeiterfassung-Statistiken")
     .addUserOption((option) =>
       option
         .setName("user")
-        .setDescription("User to view stats for (defaults to yourself)")
+        .setDescription(
+          "Benutzer für den die Statistiken angezeigt werden sollen"
+        )
         .setRequired(false)
     ) as SlashCommandBuilder,
 
@@ -30,7 +32,7 @@ const command: Command = {
 
       if (!userStats || userStats.sessionsCount === 0) {
         await interaction.reply({
-          content: `📊 ${targetUser.displayName} hasn't completed any time tracking sessions yet.`,
+          content: `📊 ${targetUser.displayName} hat noch keine Zeiterfassung-Sessions abgeschlossen.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -50,7 +52,8 @@ const command: Command = {
     } catch (error) {
       console.error("Error in stats command:", error);
       await interaction.reply({
-        content: "❌ Failed to retrieve statistics. Please try again.",
+        content:
+          "❌ Statistiken konnten nicht abgerufen werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }

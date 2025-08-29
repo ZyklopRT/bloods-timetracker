@@ -172,17 +172,20 @@ export class DatabaseManager {
     `);
 
     const results = stmt.all(guildId) as any[];
-    return results.map((result) => ({
-      id: result.id,
-      userId: result.userId,
-      guildId: result.guildId,
-      startTime: new Date(result.startTime),
-      endTime: result.endTime ? new Date(result.endTime) : undefined,
-      pausedTime: result.pausedTime,
-      status: result.status,
-      createdAt: new Date(result.createdAt),
-      updatedAt: new Date(result.updatedAt),
-    } as TimeTrackingSession));
+    return results.map(
+      (result) =>
+        ({
+          id: result.id,
+          userId: result.userId,
+          guildId: result.guildId,
+          startTime: new Date(result.startTime),
+          endTime: result.endTime ? new Date(result.endTime) : undefined,
+          pausedTime: result.pausedTime,
+          status: result.status,
+          createdAt: new Date(result.createdAt),
+          updatedAt: new Date(result.updatedAt),
+        } as TimeTrackingSession)
+    );
   }
 
   // Guild settings methods
@@ -346,3 +349,7 @@ export class DatabaseManager {
     this.db.close();
   }
 }
+
+// Initialize database instance
+const dbPath = process.env["DATABASE_PATH"] || "./data/timetracker.db";
+export const database = new DatabaseManager(dbPath);

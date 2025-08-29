@@ -3,18 +3,18 @@ import {
   ChatInputCommandInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { database } from "../index";
+import { database } from "../database/database";
 import { formatDetailedTime } from "../utils/helpers";
 import { Command } from "../types";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("leaderboard")
-    .setDescription("View the time tracking leaderboard")
+    .setDescription("Zeige die Zeiterfassung-Bestenliste")
     .addIntegerOption((option) =>
       option
         .setName("limit")
-        .setDescription("Number of users to show (1-20)")
+        .setDescription("Anzahl der Benutzer (1-20)")
         .setMinValue(1)
         .setMaxValue(20)
         .setRequired(false)
@@ -41,19 +41,18 @@ const command: Command = {
 
       if (results.length === 0) {
         await interaction.editReply({
-          content: "📊 No time tracking data found for this server yet!",
+          content:
+            "📊 Noch keine Zeiterfassungsdaten für diesen Server gefunden!",
         });
         return;
       }
 
       const embed = new EmbedBuilder()
-        .setTitle("🏆 Time Tracking Leaderboard")
+        .setTitle("🏆 Zeiterfassung Bestenliste")
         .setColor(0xffd700)
         .setTimestamp()
         .setFooter({
-          text: `Showing top ${results.length} user${
-            results.length > 1 ? "s" : ""
-          } • Total sessions tracked`,
+          text: `Top ${results.length} Benutzer • Gesamte Sessions`,
         });
 
       // Fetch user details and build leaderboard
@@ -69,7 +68,7 @@ const command: Command = {
           username = member.displayName;
         } catch (error) {
           // User might have left the server
-          username = `User ${result.userId.slice(0, 8)}...`;
+          username = `Benutzer ${result.userId.slice(0, 8)}...`;
         }
 
         const position = i + 1;
@@ -83,7 +82,7 @@ const command: Command = {
             : `**${position}.**`;
         const timeFormatted = formatDetailedTime(result.totalTimeMs);
         const sessionsText =
-          result.sessionsCount === 1 ? "session" : "sessions";
+          result.sessionsCount === 1 ? "Session" : "Sessions";
 
         leaderboardEntries.push(
           `${medal} **${username}**\n` +
@@ -105,10 +104,10 @@ const command: Command = {
       );
 
       embed.addFields({
-        name: "📊 Summary",
-        value: `**Total Time Tracked:** ${formatDetailedTime(
+        name: "📊 Zusammenfassung",
+        value: `**Gesamte Spielzeit:** ${formatDetailedTime(
           totalTimeSum
-        )}\n**Total Sessions:** ${totalSessions}`,
+        )}\n**Gesamte Sessions:** ${totalSessions}`,
         inline: false,
       });
 
@@ -116,7 +115,8 @@ const command: Command = {
     } catch (error) {
       console.error("Error in leaderboard command:", error);
       await interaction.editReply({
-        content: "❌ Failed to retrieve leaderboard. Please try again.",
+        content:
+          "❌ Bestenliste konnte nicht abgerufen werden. Bitte versuche es erneut.",
       });
     }
   },

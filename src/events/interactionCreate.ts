@@ -1,4 +1,4 @@
-import { Events, Interaction, MessageFlags } from "discord.js";
+import { Events, Interaction } from "discord.js";
 import { ExtendedClient } from "../types";
 
 export default {
@@ -27,7 +27,7 @@ export default {
 
         const errorMessage = {
           content: "Es gab einen Fehler beim Ausführen dieses Befehls!",
-          flags: MessageFlags.Ephemeral,
+          ephemeral: true,
         };
 
         if (interaction.replied || interaction.deferred) {
@@ -46,7 +46,7 @@ export default {
 
         const errorMessage = {
           content: "Es gab einen Fehler beim Verarbeiten deiner Anfrage!",
-          flags: MessageFlags.Ephemeral,
+          ephemeral: true,
         };
 
         if (interaction.replied || interaction.deferred) {
@@ -85,9 +85,9 @@ async function handleButtonInteraction(interaction: any): Promise<void> {
       interaction
     );
   } else {
-            await interaction.reply({
-          content: "Unbekannte Button-Interaktion!",
-          flags: MessageFlags.Ephemeral,
-        });
+    await interaction.reply({
+      content: "Unbekannte Button-Interaktion!",
+      ephemeral: true,
+    });
   }
 }

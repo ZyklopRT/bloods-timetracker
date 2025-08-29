@@ -1,11 +1,4 @@
-import { 
-  SlashCommandBuilder, 
-  ChatInputCommandInteraction,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  MessageFlags
-} from "discord.js";
+import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import { TimeTrackingManager } from "../utils/trackingManager";
 import { Command } from "../types";
 

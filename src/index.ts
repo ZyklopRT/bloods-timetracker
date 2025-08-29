@@ -3,11 +3,7 @@ import { Client, GatewayIntentBits, Collection, Events } from "discord.js";
 import fs from "fs";
 import path from "path";
 import { ExtendedClient, Command } from "./types";
-import { DatabaseManager } from "./database/database";
-
-// Initialize database
-const dbPath = process.env["DATABASE_PATH"] || "./data/timetracker.db";
-export const database = new DatabaseManager(dbPath);
+import { database } from "./database/database";
 
 // Create Discord client with necessary intents
 const client = new Client({
@@ -27,7 +23,7 @@ const commandsPath = path.join(__dirname, "commands");
 if (fs.existsSync(commandsPath)) {
   const commandFiles = fs
     .readdirSync(commandsPath)
-    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+    .filter((file) => file.endsWith(".ts"));
 
   for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
@@ -54,7 +50,7 @@ const eventsPath = path.join(__dirname, "events");
 if (fs.existsSync(eventsPath)) {
   const eventFiles = fs
     .readdirSync(eventsPath)
-    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+    .filter((file) => file.endsWith(".ts"));
 
   for (const file of eventFiles) {
     const filePath = path.join(eventsPath, file);

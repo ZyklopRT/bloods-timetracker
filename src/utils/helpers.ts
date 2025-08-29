@@ -18,13 +18,15 @@ export function formatTime(ms: number): string {
 
   const parts: string[] = [];
 
-  if (days > 0) parts.push(`${days}d`);
-  if (remainingHours > 0) parts.push(`${remainingHours}h`);
-  if (remainingMinutes > 0) parts.push(`${remainingMinutes}m`);
+  if (days > 0) parts.push(`${days} Tag${days > 1 ? "e" : ""}`);
+  if (remainingHours > 0)
+    parts.push(`${remainingHours} Stunde${remainingHours > 1 ? "n" : ""}`);
+  if (remainingMinutes > 0)
+    parts.push(`${remainingMinutes} Minute${remainingMinutes > 1 ? "n" : ""}`);
   if (remainingSeconds > 0 || parts.length === 0)
-    parts.push(`${remainingSeconds}s`);
+    parts.push(`${remainingSeconds} Sekunde${remainingSeconds > 1 ? "n" : ""}`);
 
-  return parts.join(" ");
+  return parts.join(", ");
 }
 
 /**
@@ -44,19 +46,19 @@ export function formatDetailedTime(ms: number): string {
 
   const parts: string[] = [];
 
-  if (days > 0) parts.push(`${days} day${days > 1 ? "s" : ""}`);
+  if (days > 0) parts.push(`${days} Tag${days > 1 ? "e" : ""}`);
   if (remainingHours > 0)
-    parts.push(`${remainingHours} hour${remainingHours > 1 ? "s" : ""}`);
+    parts.push(`${remainingHours} Stunde${remainingHours > 1 ? "n" : ""}`);
   if (remainingMinutes > 0)
-    parts.push(`${remainingMinutes} minute${remainingMinutes > 1 ? "s" : ""}`);
+    parts.push(`${remainingMinutes} Minute${remainingMinutes > 1 ? "n" : ""}`);
   if (remainingSeconds > 0 || parts.length === 0)
-    parts.push(`${remainingSeconds} second${remainingSeconds > 1 ? "s" : ""}`);
+    parts.push(`${remainingSeconds} Sekunde${remainingSeconds > 1 ? "n" : ""}`);
 
   if (parts.length === 1) return parts[0] || "";
-  if (parts.length === 2) return parts.join(" and ");
+  if (parts.length === 2) return parts.join(" und ");
 
   const lastPart = parts.pop();
-  return parts.join(", ") + ", and " + lastPart;
+  return parts.join(", ") + " und " + lastPart;
 }
 
 /**
@@ -183,26 +185,26 @@ export function createUserStatsEmbed(
   lastSeen: Date
 ): EmbedBuilder {
   return new EmbedBuilder()
-    .setTitle(`📊 Time Tracking Stats - ${user.displayName}`)
+    .setTitle(`📊 Zeiterfassung Statistiken - ${user.displayName}`)
     .setColor(0x0099ff)
     .addFields(
       {
-        name: "⏱️ Total Time Tracked",
+        name: "⏱️ Gesamte Spielzeit",
         value: formatDetailedTime(totalTime),
         inline: true,
       },
       {
-        name: "📈 Sessions Completed",
+        name: "📈 Abgeschlossene Sessions",
         value: sessionsCount.toString(),
         inline: true,
       },
       {
-        name: "👀 Last Seen",
+        name: "👀 Zuletzt gesehen",
         value: `<t:${Math.floor(lastSeen.getTime() / 1000)}:R>`,
         inline: true,
       },
       {
-        name: "⏱️ Average Session",
+        name: "⏱️ Durchschnittliche Session",
         value: formatDetailedTime(totalTime / sessionsCount),
         inline: true,
       }

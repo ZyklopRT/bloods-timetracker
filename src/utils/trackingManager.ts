@@ -7,12 +7,9 @@ import {
   ChatInputCommandInteraction,
   ButtonInteraction,
 } from "discord.js";
-import { database } from "../index";
+import { database } from "../database/database";
 import { TimeTrackingSession } from "../types";
-import {
-  generateSessionId,
-  formatDetailedTime,
-} from "./helpers";
+import { generateSessionId, formatDetailedTime } from "./helpers";
 
 export class TimeTrackingManager {
   /**
@@ -77,7 +74,8 @@ export class TimeTrackingManager {
     } catch (error) {
       console.error("Error starting tracking:", error);
       await interaction.reply({
-        content: "❌ Zeiterfassung konnte nicht gestartet werden. Bitte versuche es erneut.",
+        content:
+          "❌ Zeiterfassung konnte nicht gestartet werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -95,7 +93,7 @@ export class TimeTrackingManager {
       const session = database.getActiveSession(userId, guildId);
       if (!session) {
         const errorMsg = "⚠️ Du hast keine aktive Zeiterfassung.";
-        
+
         if (interaction.isButton()) {
           await interaction.reply({
             content: errorMsg,
@@ -126,16 +124,32 @@ export class TimeTrackingManager {
       // Update user stats
       database.updateUserStats(userId, guildId, adjustedDuration);
 
-      // Update the ephemeral message to show completion
+      // Send public stop notification
+      await this.sendStopNotification(
+        interaction.user,
+        adjustedDuration,
+        interaction
+      );
+
+      // Update the ephemeral message briefly, then delete it
       const replyMessage = `🔴 **Zeiterfassung beendet!**\n\nDu hast **${formatDetailedTime(
         adjustedDuration
-      )}** gespielt. Tolle Session! 🎉`;
+      )}** gespielt. Tolle Session! 🎉\n\n*Diese Nachricht wird in 3 Sekunden gelöscht...*`;
 
       if (interaction.isButton()) {
         await interaction.update({
           content: replyMessage,
           components: [],
         });
+
+        // Delete the ephemeral message after 3 seconds
+        setTimeout(async () => {
+          try {
+            await interaction.deleteReply();
+          } catch (error) {
+            console.error("Failed to delete ephemeral message:", error);
+          }
+        }, 3000);
       } else {
         await interaction.reply({
           content: replyMessage,
@@ -144,7 +158,8 @@ export class TimeTrackingManager {
       }
     } catch (error) {
       console.error("Error stopping tracking:", error);
-      const errorMsg = "❌ Zeiterfassung konnte nicht beendet werden. Bitte versuche es erneut.";
+      const errorMsg =
+        "❌ Zeiterfassung konnte nicht beendet werden. Bitte versuche es erneut.";
 
       if (interaction.isButton()) {
         await interaction.reply({
@@ -209,13 +224,15 @@ export class TimeTrackingManager {
       );
 
       await interaction.update({
-        content: "⏸️ **Zeiterfassung pausiert**\n\nDeine Session ist pausiert. Klicke **Fortsetzen** um fortzufahren oder **Stoppen** um die Session zu beenden.",
+        content:
+          "⏸️ **Zeiterfassung pausiert**\n\nDeine Session ist pausiert. Klicke **Fortsetzen** um fortzufahren oder **Stoppen** um die Session zu beenden.",
         components: [row],
       });
     } catch (error) {
       console.error("Error pausing tracking:", error);
       await interaction.reply({
-        content: "❌ Zeiterfassung konnte nicht pausiert werden. Bitte versuche es erneut.",
+        content:
+          "❌ Zeiterfassung konnte nicht pausiert werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -275,19 +292,19 @@ export class TimeTrackingManager {
       );
 
       await interaction.update({
-        content: "▶️ **Zeiterfassung fortgesetzt**\n\nDeine Session ist wieder aktiv. Klicke **Pausieren** zum Pausieren oder **Stoppen** um die Session zu beenden.",
+        content:
+          "▶️ **Zeiterfassung fortgesetzt**\n\nDeine Session ist wieder aktiv. Klicke **Pausieren** zum Pausieren oder **Stoppen** um die Session zu beenden.",
         components: [row],
       });
     } catch (error) {
       console.error("Error resuming tracking:", error);
       await interaction.reply({
-        content: "❌ Zeiterfassung konnte nicht fortgesetzt werden. Bitte versuche es erneut.",
+        content:
+          "❌ Zeiterfassung konnte nicht fortgesetzt werden. Bitte versuche es erneut.",
         flags: MessageFlags.Ephemeral,
       });
     }
   }
-
-
 
   /**
    * Sends start notification in the guild channel
@@ -298,11 +315,38 @@ export class TimeTrackingManager {
   ): Promise<void> {
     try {
       // Send public message in the same channel where the command was used
-      await interaction.followUp({
-        content: `🎮 **${user.displayName}** spielt jetzt!`,
-      });
+      if (interaction.channel && "send" in interaction.channel) {
+        await interaction.channel.send({
+          content: `🎮 **${user.displayName}** spielt jetzt!`,
+        });
+      }
     } catch (error) {
       console.error("Failed to send start notification:", error);
+    }
+  }
+
+  /**
+   * Sends stop notification in the guild channel
+   */
+  private async sendStopNotification(
+    user: User,
+    duration: number,
+    interaction: ChatInputCommandInteraction | ButtonInteraction
+  ): Promise<void> {
+    try {
+      // Send public message in the same channel
+      const channel = interaction.channel;
+      if (channel && "send" in channel) {
+        await channel.send({
+          content: `🔴 **${
+            user.displayName
+          }** spielt nicht mehr und hat **${formatDetailedTime(
+            duration
+          )}** gespielt!`,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to send stop notification:", error);
     }
   }
 }
