@@ -114,8 +114,26 @@ export class LiveTrackingManager {
           const statusEmoji = session.status === "active" ? "🟢" : "⏸️";
           const statusText =
             session.status === "active" ? "Spielt" : "Pausiert";
+
+          const currentTime = Date.now() - session.startTime.getTime();
+          let totalPausedTime = session.pausedTime || 0;
+
+          // If session is paused, add the current pause duration
+          if (session.status === "paused") {
+            const currentPauseStart = database.getCurrentPauseStartTime(
+              session.id
+            );
+            if (currentPauseStart) {
+              const currentPauseDuration =
+                Date.now() - currentPauseStart.getTime();
+              totalPausedTime += currentPauseDuration;
+            }
+          }
+
+          const adjustedTime = Math.max(0, currentTime - totalPausedTime);
+
           return `${statusEmoji} **Unbekannter Benutzer** • ${statusText} • ${formatTime(
-            Date.now() - session.startTime.getTime()
+            adjustedTime
           )}`;
         }
       })

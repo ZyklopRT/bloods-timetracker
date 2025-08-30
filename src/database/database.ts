@@ -380,6 +380,20 @@ export class DatabaseManager {
     return pauseEnd.getTime() - pauseStart.getTime();
   }
 
+  getCurrentPauseStartTime(sessionId: string): Date | null {
+    const stmt = this.db.prepare(`
+      SELECT pauseStartTime FROM pause_sessions 
+      WHERE sessionId = ? AND pauseEndTime IS NULL
+      ORDER BY pauseStartTime DESC
+      LIMIT 1
+    `);
+    const result = stmt.get(sessionId) as any;
+
+    if (!result) return null;
+
+    return new Date(result.pauseStartTime);
+  }
+
   close(): void {
     this.db.close();
   }
