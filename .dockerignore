@@ -1,10 +1,67 @@
+# Dependencies
 node_modules
-npm-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Development files (keep src and tsconfig.json for build stage)
+# src and tsconfig.json are needed for Docker build
+# Only exclude specific dev files we don't need
+.env.example
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
 .git
 .gitignore
 README.md
-SETTINGS_GUIDE.md
-.env
-.env.example
-.DS_Store
-logs/*.log
+
+# Logs
+logs
+*.log
+
+# Coverage directory used by tools like istanbul
+coverage
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+.npm
+.eslintcache
+
+# Optional npm cache directory
+.npm
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Production build artifacts
+# dist is built inside Docker, so we don't exclude it
