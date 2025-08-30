@@ -20,7 +20,8 @@ curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ### Build für Production
 
 ```bash
-npm run build:prod
+# Nicht mehr nötig! 
+# Build passiert automatisch im Dockerfile
 ```
 
 ### Git Repository
@@ -46,8 +47,8 @@ git push origin main
 1. **New Application** → **From Git Repository**
 2. Repository URL eingeben
 3. Branch: `main`
-4. Build Command: `npm run build:prod`
-5. Start Command: `node dist/index.js`
+4. Build Command: Leer lassen (wird im Dockerfile gemacht)
+5. Start Command: Leer lassen (wird im Dockerfile gemacht)
 
 ### Environment Variables
 
