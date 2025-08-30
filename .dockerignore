@@ -6,8 +6,5 @@ README.md
 SETTINGS_GUIDE.md
 .env
 .env.example
-src/
-tsconfig.json
-*.ts
 .DS_Store
 logs/*.log
