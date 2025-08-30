@@ -11,9 +11,6 @@ COPY src/ ./src/
 COPY tsconfig.json ./
 RUN npm run build
 
-# Deploy Discord commands (production)
-RUN npm run deploy:prod
-
 # Production stage
 FROM node:20-alpine AS production
 
@@ -41,5 +38,5 @@ USER nodeapp
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD ps aux | grep -v grep | grep "node dist/index.js" || exit 1
 
-# Start the Discord bot directly
-CMD ["node", "dist/index.js"]
+# Deploy commands and start the Discord bot
+CMD ["sh", "-c", "npm run deploy:prod && node dist/index.js"]
