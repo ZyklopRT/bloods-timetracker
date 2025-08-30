@@ -1,6 +1,6 @@
 import { EmbedBuilder, TextChannel, Client, Message } from "discord.js";
 import { database } from "../database/database";
-import { formatTime } from "./helpers";
+import { formatTime, calculateAdjustedTime } from "./helpers";
 
 export class LiveTrackingManager {
   private client: Client;
@@ -96,11 +96,7 @@ export class LiveTrackingManager {
             user = await this.client.users.fetch(session.userId);
           }
 
-          const currentTime = Date.now() - session.startTime.getTime();
-          const adjustedTime = Math.max(
-            0,
-            currentTime - (session.pausedTime || 0)
-          );
+          const adjustedTime = calculateAdjustedTime(session);
 
           const statusEmoji = session.status === "active" ? "🟢" : "⏸️";
           const statusText =
@@ -115,22 +111,7 @@ export class LiveTrackingManager {
           const statusText =
             session.status === "active" ? "Spielt" : "Pausiert";
 
-          const currentTime = Date.now() - session.startTime.getTime();
-          let totalPausedTime = session.pausedTime || 0;
-
-          // If session is paused, add the current pause duration
-          if (session.status === "paused") {
-            const currentPauseStart = database.getCurrentPauseStartTime(
-              session.id
-            );
-            if (currentPauseStart) {
-              const currentPauseDuration =
-                Date.now() - currentPauseStart.getTime();
-              totalPausedTime += currentPauseDuration;
-            }
-          }
-
-          const adjustedTime = Math.max(0, currentTime - totalPausedTime);
+          const adjustedTime = calculateAdjustedTime(session);
 
           return `${statusEmoji} **Unbekannter Benutzer** • ${statusText} • ${formatTime(
             adjustedTime

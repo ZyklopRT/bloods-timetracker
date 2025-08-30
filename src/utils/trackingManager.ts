@@ -15,6 +15,7 @@ import {
   generateSessionId,
   formatDetailedTime,
   validateTrackingChannel,
+  calculateAdjustedTime,
 } from "./helpers";
 import { LiveTrackingManager } from "./liveTrackingManager";
 
@@ -132,11 +133,20 @@ export class TimeTrackingManager {
       }
 
       const endTime = new Date();
-      const sessionDuration = endTime.getTime() - session.startTime.getTime();
-      const adjustedDuration = Math.max(
-        0,
-        sessionDuration - (session.pausedTime || 0)
-      );
+
+      // If the session is currently paused, end the current pause before calculating
+      if (session.status === "paused") {
+        const pauseDuration = database.endPause(session.id);
+        const newPausedTime = (session.pausedTime || 0) + pauseDuration;
+        database.updateSession(session.id, {
+          pausedTime: newPausedTime,
+        });
+        // Update the session object for accurate calculation
+        session.pausedTime = newPausedTime;
+        session.status = "active"; // Temporarily set to active for calculation
+      }
+
+      const adjustedDuration = calculateAdjustedTime(session);
 
       // Update session in database
       database.updateSession(session.id, {

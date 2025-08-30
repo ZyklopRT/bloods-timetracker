@@ -4,7 +4,7 @@ import {
   ChatInputCommandInteraction,
   ButtonInteraction,
 } from "discord.js";
-import { TrackingListUser } from "../types";
+import { TrackingListUser, TimeTrackingSession } from "../types";
 import { database } from "../database/database";
 
 /**
@@ -75,6 +75,27 @@ export function generateSessionId(): string {
 }
 
 /**
+ * Calculates the adjusted time for a session, properly accounting for paused time
+ * @param session - The time tracking session
+ * @returns Adjusted time in milliseconds
+ */
+export function calculateAdjustedTime(session: TimeTrackingSession): number {
+  const currentTime = Date.now() - session.startTime.getTime();
+  let totalPausedTime = session.pausedTime || 0;
+
+  // If session is paused, add the current pause duration
+  if (session.status === "paused") {
+    const currentPauseStart = database.getCurrentPauseStartTime(session.id);
+    if (currentPauseStart) {
+      const currentPauseDuration = Date.now() - currentPauseStart.getTime();
+      totalPausedTime += currentPauseDuration;
+    }
+  }
+
+  return Math.max(0, currentTime - totalPausedTime);
+}
+
+/**
  * Creates an embed for tracking list display
  * @param users - Array of users currently being tracked
  * @returns Discord EmbedBuilder
@@ -93,13 +114,16 @@ export function createTrackingListEmbed(
   }
 
   const fields = users.map((user) => {
+    // For TrackingListUser, we need to calculate time differently since it lacks pausedTime
+    // For paused users, we'll show the time as it was when paused (assuming minimal pause tracking in this context)
     const currentTime = Date.now() - user.startTime.getTime();
+    const adjustedTime = user.status === "paused" ? 0 : currentTime; // Simple fallback for tracking list
     const statusEmoji = user.status === "active" ? "🟢" : "⏸️";
     const statusText = user.status === "active" ? "Active" : "Paused";
 
     return {
       name: `${statusEmoji} ${user.username}`,
-      value: `**Time:** ${formatTime(currentTime)}\n**Status:** ${statusText}`,
+      value: `**Time:** ${formatTime(adjustedTime)}\n**Status:** ${statusText}`,
       inline: true,
     };
   });

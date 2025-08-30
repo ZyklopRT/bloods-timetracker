@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { database } from "../database/database";
-import { formatTime } from "../utils/helpers";
+import { formatTime, calculateAdjustedTime } from "../utils/helpers";
 import { Command } from "../types";
 
 const command: Command = {
@@ -45,11 +45,7 @@ const command: Command = {
           username = `Benutzer ${session.userId.slice(0, 8)}...`;
         }
 
-        const currentTime = Date.now() - session.startTime.getTime();
-        const adjustedTime = Math.max(
-          0,
-          currentTime - (session.pausedTime || 0)
-        );
+        const adjustedTime = calculateAdjustedTime(session);
         const statusEmoji = session.status === "active" ? "🟢" : "⏸️";
         const statusText = session.status === "active" ? "Aktiv" : "Pausiert";
 
