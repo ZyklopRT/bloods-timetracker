@@ -27,8 +27,8 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built application from builder stage
 COPY --from=builder /app/dist/ ./dist/
 
-# Copy data directory for SQLite database
-COPY data/ ./data/
+# Create data directory for SQLite database
+RUN mkdir -p ./data
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
