@@ -1,7 +1,12 @@
-# Multi-stage build for HTTP Interactions version
-FROM node:18-alpine AS builder
+# Multi-stage build for HTTP Interactions version (Debian-based - Best Practice)
+FROM node:18-slim AS builder
 
 WORKDIR /app
+
+# Install OpenSSL and other required packages
+RUN apt-get update && \
+    apt-get install -y openssl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install dependencies
 COPY package*.json ./
@@ -10,16 +15,18 @@ RUN npm ci --only=production
 RUN npx prisma generate
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:18-slim AS production
 
-# Install dumb-init and su-exec for proper signal handling and user switching
-RUN apk add --no-cache dumb-init su-exec
+# Install required packages for proper signal handling and OpenSSL
+RUN apt-get update && \
+    apt-get install -y dumb-init openssl && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodeapp -u 1001
+RUN groupadd --gid 1001 nodejs && \
+    useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nodeapp
 
 # Copy package files and node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
