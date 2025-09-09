@@ -27,6 +27,65 @@ export class DatabaseManager {
   }
 
   initializeTables() {
+    // Check if we need to migrate from old schema
+    const needsMigration = this.checkIfMigrationNeeded();
+
+    if (needsMigration) {
+      this.performMigration();
+    } else {
+      // Create new tables (fresh installation)
+      this.createNewTables();
+    }
+
+    // Create guild settings table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS guild_settings (
+        guild_id TEXT PRIMARY KEY,
+        tracking_channel_id TEXT,
+        live_channel_id TEXT,
+        live_message_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    this.createIndexes();
+  }
+
+  /**
+   * Create database indexes for better performance
+   */
+  createIndexes() {
+    this.db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_sessions_user_guild ON sessions(userId, guildId)"
+    );
+    this.db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_sessions_guild_status ON sessions(guildId, status)"
+    );
+    this.db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(sessionId)"
+    );
+    this.db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_session_events_type_time ON session_events(eventType, timestamp)"
+    );
+  }
+
+  /**
+   * Check if database needs migration from old schema
+   */
+  checkIfMigrationNeeded() {
+    try {
+      const tableInfo = this.db.prepare("PRAGMA table_info(sessions)").all();
+      return tableInfo.some((col) => col.name === "startTime");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Create new table structure for fresh installations
+   */
+  createNewTables() {
     // Create sessions table (simplified for event-based tracking)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
@@ -51,92 +110,107 @@ export class DatabaseManager {
       )
     `);
 
-    // Migrate existing sessions to new structure if needed
-    this.migrateToEventBasedSystem();
-
-    // Create guild settings table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS guild_settings (
-        guild_id TEXT PRIMARY KEY,
-        tracking_channel_id TEXT,
-        live_channel_id TEXT,
-        live_message_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Create indexes for better performance
-    this.db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_sessions_user_guild ON sessions(userId, guildId)"
-    );
-    this.db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_sessions_guild_status ON sessions(guildId, status)"
-    );
-    this.db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(sessionId)"
-    );
-    this.db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_session_events_type_time ON session_events(eventType, timestamp)"
-    );
+    // Create indexes
+    this.createIndexes();
   }
 
   /**
-   * Migrate existing sessions to event-based system
+   * Perform migration from old schema to new event-based schema
    */
-  migrateToEventBasedSystem() {
-    try {
-      // Check if old columns exist
-      const tableInfo = this.db.prepare("PRAGMA table_info(sessions)").all();
-      const hasOldColumns = tableInfo.some((col) => col.name === "startTime");
+  performMigration() {
+    console.log("📦 Migrating to event-based session tracking...");
 
-      if (hasOldColumns) {
-        console.log("📦 Migrating to event-based session tracking...");
+    // Create new tables
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions_new (
+        id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+        userId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+        updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
 
-        // Get existing sessions
-        const oldSessions = this.db
-          .prepare(
-            `
-          SELECT * FROM sessions 
-          WHERE startTime IS NOT NULL
-        `
-          )
-          .all();
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_events (
+        id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+        sessionId TEXT NOT NULL,
+        eventType TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (sessionId) REFERENCES sessions_new (id)
+      )
+    `);
 
-        // Migrate each session
-        for (const session of oldSessions) {
-          // Add start event
-          this.addSessionEvent(
-            session.id,
-            "start",
-            new Date(session.startTime)
-          );
+    // Migrate data from old sessions table
+    const oldSessions = this.db.prepare(`SELECT * FROM sessions`).all();
 
-          // Add pause/resume events if they exist
-          if (
-            session.pausedTime &&
-            session.pausedTime > 0 &&
-            session.status === "paused"
-          ) {
-            // Calculate when pause happened (approximate)
-            const pauseTime = new Date(
-              new Date(session.startTime).getTime() + session.pausedTime
-            );
-            this.addSessionEvent(session.id, "pause", pauseTime);
-          }
+    for (const session of oldSessions) {
+      // Insert into new sessions table
+      const newSessionStmt = this.db.prepare(`
+        INSERT INTO sessions_new (id, userId, guildId, status, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
 
-          // Add stop event if completed
-          if (session.endTime) {
-            this.addSessionEvent(session.id, "stop", new Date(session.endTime));
-          }
-        }
+      newSessionStmt.run(
+        session.id,
+        session.userId,
+        session.guildId,
+        session.status,
+        session.createdAt,
+        session.updatedAt
+      );
 
-        // Drop old columns (SQLite doesn't support DROP COLUMN directly, so we'll leave them)
-        console.log("✅ Migration to event-based tracking completed");
+      // Create events for this session
+      if (session.startTime) {
+        this.addSessionEventDirect(
+          session.id,
+          "start",
+          new Date(session.startTime)
+        );
       }
-    } catch (error) {
-      console.log("ℹ️ No migration needed or migration failed:", error.message);
+
+      if (
+        session.pausedTime &&
+        session.pausedTime > 0 &&
+        session.status === "paused"
+      ) {
+        const pauseTime = new Date(
+          new Date(session.startTime).getTime() + (session.pausedTime || 0)
+        );
+        this.addSessionEventDirect(session.id, "pause", pauseTime);
+      }
+
+      if (session.endTime) {
+        this.addSessionEventDirect(
+          session.id,
+          "stop",
+          new Date(session.endTime)
+        );
+      }
     }
+
+    // Replace old table with new one
+    this.db.exec(`DROP TABLE sessions`);
+    this.db.exec(`ALTER TABLE sessions_new RENAME TO sessions`);
+
+    // Create indexes after migration
+    this.createIndexes();
+
+    console.log("✅ Migration to event-based tracking completed");
+  }
+
+  /**
+   * Add session event directly (used during migration)
+   */
+  addSessionEventDirect(sessionId, eventType, timestamp) {
+    const stmt = this.db.prepare(`
+      INSERT INTO session_events (sessionId, eventType, timestamp)
+      VALUES (?, ?, ?)
+    `);
+
+    stmt.run(sessionId, eventType, timestamp.toISOString());
   }
 
   /**
