@@ -8,22 +8,15 @@ import {
   verifyKeyMiddleware,
 } from "discord-interactions";
 import PrismaService from "./database/prisma.js";
-import { TimeTrackingManager } from "./utils/trackingManager.js";
-import { LiveChannelManager } from "./utils/liveChannelManager.js";
-import { formatTime, validateTrackingChannel } from "./utils/helpers.js";
-import {
-  getDiscordUser,
-  getDiscordUsers,
-  formatUserDisplayName,
-} from "./utils/discordApi.js";
+import { SessionManager } from "./utils/sessionManager.js";
 
 // Create Express app
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize database
+// Initialize services
 const database = new PrismaService();
-const liveChannelManager = new LiveChannelManager();
+const sessionManager = new SessionManager();
 
 /**
  * Interactions endpoint URL where Discord will send HTTP requests
@@ -116,13 +109,26 @@ app.post(
       const userId = user?.id || member?.user?.id;
 
       try {
-        if (custom_id === "pause_tracking") {
-          return await handlePauseCommand(res, userId, guildId);
-        } else if (custom_id === "resume_tracking") {
-          return await handleResumeCommand(res, userId, guildId);
-        } else if (custom_id === "stop_tracking") {
-          return await handleStopCommand(res, userId, guildId, channelId);
+        let result;
+        switch (custom_id) {
+          case "pause_session":
+            result = await sessionManager.pauseSession(userId, guildId);
+            break;
+          case "resume_session":
+            result = await sessionManager.resumeSession(userId, guildId);
+            break;
+          case "stop_session":
+            result = await sessionManager.stopSession(userId, guildId);
+            break;
+          default:
+            console.error(`Unknown component interaction: ${custom_id}`);
+            return res.status(400).json({ error: "Unknown interaction" });
         }
+
+        return res.send({
+          type: InteractionResponseType.UPDATE_MESSAGE,
+          data: result,
+        });
       } catch (error) {
         console.error("Error handling button interaction:", error);
         return res.send({
@@ -156,8 +162,7 @@ async function handleStartCommand(res, userId, guildId, channelId) {
 }
 
 async function handleStopCommand(res, userId, guildId, channelId) {
-  const trackingManager = new TimeTrackingManager();
-  const result = await trackingManager.stopTracking(userId, guildId, channelId);
+  const result = await sessionManager.stopSession(userId, guildId);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -165,182 +170,40 @@ async function handleStopCommand(res, userId, guildId, channelId) {
   });
 }
 
-async function handlePauseCommand(res, userId, guildId) {
-  const trackingManager = new TimeTrackingManager();
-  const result = await trackingManager.pauseTracking(userId, guildId);
-
-  return res.send({
-    type: InteractionResponseType.UPDATE_MESSAGE,
-    data: result,
-  });
-}
-
-async function handleResumeCommand(res, userId, guildId) {
-  const trackingManager = new TimeTrackingManager();
-  const result = await trackingManager.resumeTracking(userId, guildId);
-
-  return res.send({
-    type: InteractionResponseType.UPDATE_MESSAGE,
-    data: result,
-  });
-}
+// Button interactions are now handled directly in the MESSAGE_COMPONENT section
 
 async function handleStatusCommand(res, guildId) {
   const activeSessions = await database.getAllActiveSessions(guildId);
-
-  if (activeSessions.length === 0) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        embeds: [
-          {
-            title: "⏰ Aktueller On-Off Status",
-            description: "🔕 Aktuell werden keine Benutzer erfasst.",
-            color: 0x00ae86,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      },
-    });
-  }
-
-  // Fetch Discord user information for all active users
-  const userIds = activeSessions.map((session) => session.userId);
-  const discordUsers = await getDiscordUsers(userIds);
-
-  const trackingManager = new TimeTrackingManager();
-  const statusEntries = activeSessions.map((session) => {
-    const adjustedTime = trackingManager.calculateAdjustedTime(session);
-    const statusEmoji = session.status === "ACTIVE" ? "🟢" : "⏸️";
-    const statusText = session.status === "ACTIVE" ? "Aktiv" : "Pausiert";
-    const userName = formatUserDisplayName(
-      discordUsers[session.userId],
-      session.userId
-    );
-
-    return (
-      `${statusEmoji} **${userName}** - ${statusText}\n` +
-      `⏱️ Aktuelle Session: ${formatTime(adjustedTime)}\n` +
-      `🕐 Gestartet: <t:${Math.floor(session.startTime.getTime() / 1000)}:R>\n`
-    );
-  });
+  const content = sessionManager.createOnlineListContent(activeSessions);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      embeds: [
-        {
-          title: "⏰ Aktueller On-Off Status",
-          description: statusEntries.join("\n"),
-          color: 0x00ae86,
-          timestamp: new Date().toISOString(),
-        },
-      ],
+      content,
+      flags: InteractionResponseFlags.EPHEMERAL,
     },
   });
 }
 
 async function handleStatsCommand(res, targetUserId, guildId) {
-  const userStats = await database.getUserStats(targetUserId, guildId);
-
-  if (!userStats || userStats.sessionsCount === 0) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: `📊 User hat noch keine On-Off-Sessions abgeschlossen.`,
-        flags: InteractionResponseFlags.EPHEMERAL,
-      },
-    });
-  }
-
-  // Fetch Discord user information
-  const discordUser = await getDiscordUser(targetUserId);
-  const userName = formatUserDisplayName(discordUser, targetUserId);
+  const content = await sessionManager.getUserStats(targetUserId, guildId);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      embeds: [
-        {
-          title: `📊 Statistiken für ${userName}`,
-          fields: [
-            {
-              name: "⏱️ Gesamtzeit",
-              value: formatTime(userStats.totalTimeMs),
-              inline: true,
-            },
-            {
-              name: "📈 Sessions",
-              value: userStats.sessionsCount.toString(),
-              inline: true,
-            },
-            {
-              name: "📅 Durchschnitt/Session",
-              value: formatTime(
-                Math.round(userStats.totalTimeMs / userStats.sessionsCount)
-              ),
-              inline: true,
-            },
-          ],
-          color: 0x00ae86,
-          timestamp: new Date().toISOString(),
-        },
-      ],
+      content,
       flags: InteractionResponseFlags.EPHEMERAL,
     },
   });
 }
 
 async function handleLeaderboardCommand(res, guildId) {
-  const leaderboard = await database.getLeaderboard(guildId, 10);
-
-  if (leaderboard.length === 0) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: "📊 Noch keine On-Off-Daten verfügbar.",
-        flags: InteractionResponseFlags.EPHEMERAL,
-      },
-    });
-  }
-
-  // Fetch Discord user information for all leaderboard users
-  const userIds = leaderboard.map((entry) => entry.userId);
-  const discordUsers = await getDiscordUsers(userIds);
-
-  const leaderboardText = leaderboard
-    .map((entry, index) => {
-      const medal =
-        index === 0
-          ? "🥇"
-          : index === 1
-          ? "🥈"
-          : index === 2
-          ? "🥉"
-          : `${index + 1}.`;
-
-      const userName = formatUserDisplayName(
-        discordUsers[entry.userId],
-        entry.userId
-      );
-      return `${medal} **${userName}** - ${formatTime(entry.totalTimeMs)} (${
-        entry.sessionsCount
-      } Sessions)`;
-    })
-    .join("\n");
+  const content = await sessionManager.getLeaderboard(guildId, 10);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      embeds: [
-        {
-          title: "🏆 On-Off Leaderboard",
-          description: leaderboardText,
-          color: 0xffd700,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      flags: InteractionResponseFlags.EPHEMERAL,
+      content,
     },
   });
 }
@@ -385,21 +248,19 @@ async function handleSettingsCommand(res, options, guildId) {
     );
     const channelId = channelOption?.value || null;
 
-    if (!channelId) {
-      // Disabling live channel - clear the live message first
-      await liveChannelManager.clearLiveMessage(guildId);
-    }
-
-    await database.setGuildSettings(guildId, { liveChannelId: channelId });
+    await database.setGuildSettings(guildId, {
+      liveChannelId: channelId,
+      liveMessageId: null, // Reset message ID when changing channel
+    });
 
     if (channelId) {
-      // Update the live message for the new channel
-      await liveChannelManager.updateLiveMessage(guildId);
+      // Update the online list for the new channel
+      await sessionManager.updateOnlineList(guildId);
     }
 
     const message = channelId
-      ? `✅ Live-Tracking in <#${channelId}> aktiviert.`
-      : `✅ Live-Tracking deaktiviert.`;
+      ? `✅ Online-Liste in <#${channelId}> aktiviert.`
+      : `✅ Online-Liste deaktiviert.`;
 
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
