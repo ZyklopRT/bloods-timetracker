@@ -115,7 +115,7 @@ app.post(
 
       try {
         // Check channel permission for session control buttons
-        const permission = await checkChannelPermission(guildId, channel_id);
+        const permission = await checkChannelPermission(guildId, channelId);
         if (!permission.allowed) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
