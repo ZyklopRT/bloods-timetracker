@@ -1,4 +1,4 @@
-import { DatabaseManager } from "../database/database.js";
+import PrismaService from "../database/prisma.js";
 import {
   formatTime,
   validateTrackingChannel,
@@ -9,7 +9,7 @@ import {
 } from "./helpers.js";
 import { InteractionResponseFlags } from "discord-interactions";
 
-const database = new DatabaseManager();
+const database = new PrismaService();
 
 export class TimeTrackingManager {
   /**
@@ -30,12 +30,12 @@ export class TimeTrackingManager {
     }
 
     // Check if user already has an active session
-    const activeSession = database.getActiveSession(userId, guildId);
+    const activeSession = await database.getActiveSession(userId, guildId);
     if (activeSession) {
       const adjustedTime = this.calculateAdjustedTime(activeSession);
-      const statusEmoji = activeSession.status === "active" ? "🟢" : "⏸️";
+      const statusEmoji = activeSession.status === "ACTIVE" ? "🟢" : "⏸️";
       const statusText =
-        activeSession.status === "active" ? "Aktiv" : "Pausiert";
+        activeSession.status === "ACTIVE" ? "Aktiv" : "Pausiert";
 
       return {
         content: `❌ **Du hast bereits eine aktive Session!**\n\n${statusEmoji} Status: **${statusText}**\n⏱️ Bisherige Zeit: **${formatTime(
@@ -43,14 +43,14 @@ export class TimeTrackingManager {
         )}**\n🕐 Gestartet: <t:${Math.floor(
           activeSession.startTime.getTime() / 1000
         )}:R>`,
-        components: createTrackingButtons(activeSession.status),
+        components: createTrackingButtons(activeSession.status.toLowerCase()),
         flags: InteractionResponseFlags.EPHEMERAL,
       };
     }
 
     // Start new tracking session
     const startTime = Date.now();
-    database.startSession(userId, guildId, new Date(startTime));
+    await database.startSession(userId, guildId, new Date(startTime));
 
     const embed = createTrackingStartEmbed(userId, startTime);
     const buttons = createTrackingButtons("active");
@@ -78,7 +78,7 @@ export class TimeTrackingManager {
       };
     }
 
-    const activeSession = database.getActiveSession(userId, guildId);
+    const activeSession = await database.getActiveSession(userId, guildId);
     if (!activeSession) {
       return {
         content:
@@ -92,10 +92,10 @@ export class TimeTrackingManager {
     const adjustedTime = this.calculateAdjustedTime(activeSession);
 
     // Stop the session
-    database.stopSession(userId, guildId, endTime);
+    await database.stopSession(userId, guildId, endTime);
 
     // Get updated user stats
-    const userStats = database.getUserStats(userId, guildId);
+    const userStats = await database.getUserStats(userId, guildId);
 
     const embed = createTrackingStopEmbed(
       userId,
@@ -116,7 +116,7 @@ export class TimeTrackingManager {
    * @returns {Object} Response object for Discord
    */
   async pauseTracking(userId, guildId) {
-    const activeSession = database.getActiveSession(userId, guildId);
+    const activeSession = await database.getActiveSession(userId, guildId);
     if (!activeSession) {
       return {
         content: "❌ **Du hast keine aktive Zeiterfassung!**",
@@ -124,7 +124,7 @@ export class TimeTrackingManager {
       };
     }
 
-    if (activeSession.status === "paused") {
+    if (activeSession.status === "PAUSED") {
       return {
         content: "❌ **Deine Session ist bereits pausiert!**",
         flags: InteractionResponseFlags.EPHEMERAL,
@@ -132,7 +132,7 @@ export class TimeTrackingManager {
     }
 
     // Pause the session with current timestamp
-    database.pauseSession(userId, guildId, new Date());
+    await database.pauseSession(userId, guildId, new Date());
 
     // Calculate current session time for display
     const currentSessionTime = this.calculateAdjustedTime(activeSession);
@@ -156,7 +156,7 @@ export class TimeTrackingManager {
    * @returns {Object} Response object for Discord
    */
   async resumeTracking(userId, guildId) {
-    const activeSession = database.getActiveSession(userId, guildId);
+    const activeSession = await database.getActiveSession(userId, guildId);
     if (!activeSession) {
       return {
         content: "❌ **Du hast keine aktive Zeiterfassung!**",
@@ -164,7 +164,7 @@ export class TimeTrackingManager {
       };
     }
 
-    if (activeSession.status === "active") {
+    if (activeSession.status === "ACTIVE") {
       return {
         content: "❌ **Deine Session läuft bereits!**",
         flags: InteractionResponseFlags.EPHEMERAL,
@@ -172,7 +172,7 @@ export class TimeTrackingManager {
     }
 
     // Resume the session
-    database.resumeSession(userId, guildId, new Date());
+    await database.resumeSession(userId, guildId, new Date());
     const currentTime = activeSession.pausedTime || 0;
 
     const embed = createTrackingStatusEmbed(userId, "active", currentTime);

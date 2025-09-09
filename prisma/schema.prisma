@@ -1,0 +1,73 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  guildId   String
+  status    SessionStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  events SessionEvent[]
+
+  // Indexes
+  @@index([userId, guildId])
+  @@index([guildId, status])
+  @@map("sessions")
+}
+
+model SessionEvent {
+  id        String   @id @default(cuid())
+  sessionId String
+  eventType EventType
+  timestamp DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([sessionId])
+  @@index([eventType, timestamp])
+  @@map("session_events")
+}
+
+model GuildSettings {
+  id               String   @id @default(cuid())
+  guildId          String   @unique
+  trackingChannelId String?
+  liveChannelId    String?
+  liveMessageId    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("guild_settings")
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+
+  @@map("session_status")
+}
+
+enum EventType {
+  START
+  PAUSE
+  RESUME
+  STOP
+
+  @@map("event_type")
+}

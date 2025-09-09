@@ -7,7 +7,7 @@ import {
   MessageComponentTypes,
   verifyKeyMiddleware,
 } from "discord-interactions";
-import { DatabaseManager } from "./database/database.js";
+import PrismaService from "./database/prisma.js";
 import { TimeTrackingManager } from "./utils/trackingManager.js";
 import { formatTime, validateTrackingChannel } from "./utils/helpers.js";
 import {
@@ -21,7 +21,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Initialize database
-const database = new DatabaseManager();
+const database = new PrismaService();
 
 /**
  * Interactions endpoint URL where Discord will send HTTP requests
@@ -184,7 +184,7 @@ async function handleResumeCommand(res, userId, guildId) {
 }
 
 async function handleStatusCommand(res, guildId) {
-  const activeSessions = database.getAllActiveSessions(guildId);
+  const activeSessions = await database.getAllActiveSessions(guildId);
 
   if (activeSessions.length === 0) {
     return res.send({
@@ -209,8 +209,8 @@ async function handleStatusCommand(res, guildId) {
   const trackingManager = new TimeTrackingManager();
   const statusEntries = activeSessions.map((session) => {
     const adjustedTime = trackingManager.calculateAdjustedTime(session);
-    const statusEmoji = session.status === "active" ? "🟢" : "⏸️";
-    const statusText = session.status === "active" ? "Aktiv" : "Pausiert";
+    const statusEmoji = session.status === "ACTIVE" ? "🟢" : "⏸️";
+    const statusText = session.status === "ACTIVE" ? "Aktiv" : "Pausiert";
     const userName = formatUserDisplayName(
       discordUsers[session.userId],
       session.userId
@@ -239,7 +239,7 @@ async function handleStatusCommand(res, guildId) {
 }
 
 async function handleStatsCommand(res, targetUserId, guildId) {
-  const userStats = database.getUserStats(targetUserId, guildId);
+  const userStats = await database.getUserStats(targetUserId, guildId);
 
   if (!userStats || userStats.sessionsCount === 0) {
     return res.send({
@@ -290,7 +290,7 @@ async function handleStatsCommand(res, targetUserId, guildId) {
 }
 
 async function handleLeaderboardCommand(res, guildId) {
-  const leaderboard = database.getLeaderboard(guildId, 10);
+  const leaderboard = await database.getLeaderboard(guildId, 10);
 
   if (leaderboard.length === 0) {
     return res.send({
@@ -362,7 +362,7 @@ async function handleSettingsCommand(res, options, guildId) {
     );
     const channelId = channelOption?.value || null;
 
-    database.updateGuildSettings(guildId, { trackingChannelId: channelId });
+    await database.setGuildSettings(guildId, { trackingChannelId: channelId });
 
     const message = channelId
       ? `✅ Zeiterfassung auf <#${channelId}> beschränkt.`
@@ -383,7 +383,7 @@ async function handleSettingsCommand(res, options, guildId) {
     );
     const channelId = channelOption?.value || null;
 
-    database.updateGuildSettings(guildId, { liveChannelId: channelId });
+    await database.setGuildSettings(guildId, { liveChannelId: channelId });
 
     const message = channelId
       ? `✅ Live-Tracking in <#${channelId}> aktiviert.`
@@ -418,14 +418,14 @@ app.listen(PORT, () => {
 });
 
 // Graceful shutdown
-process.on("SIGINT", () => {
+process.on("SIGINT", async () => {
   console.log("🛑 Shutting down gracefully...");
-  database.close();
+  await database.close();
   process.exit(0);
 });
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("🛑 Shutting down gracefully...");
-  database.close();
+  await database.close();
   process.exit(0);
 });

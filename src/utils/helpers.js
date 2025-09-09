@@ -1,6 +1,6 @@
-import { DatabaseManager } from "../database/database.js";
+import PrismaService from "../database/prisma.js";
 
-const database = new DatabaseManager();
+const database = new PrismaService();
 
 /**
  * Format milliseconds into a human-readable time string

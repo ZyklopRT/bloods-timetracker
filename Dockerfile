@@ -1,14 +1,13 @@
 # Multi-stage build for HTTP Interactions version
 FROM node:18-alpine AS builder
 
-# Install build dependencies for native modules
-RUN apk add --no-cache python3 make g++
-
 WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
+COPY prisma ./prisma/
 RUN npm ci --only=production
+RUN npx prisma generate
 
 # Production stage
 FROM node:18-alpine AS production
@@ -26,16 +25,18 @@ RUN addgroup -g 1001 -S nodejs && \
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 
+# Copy Prisma generated client
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
 # Copy application source code
 COPY src/ ./src/
+COPY prisma/ ./prisma/
 
 # Copy entrypoint script
 COPY entrypoint.sh ./entrypoint.sh
 
-# Create data directory for SQLite database persistence and set permissions
-RUN mkdir -p ./data && \
-    chown -R nodeapp:nodejs /app && \
-    chmod 755 ./data && \
+# Set permissions
+RUN chown -R nodeapp:nodejs /app && \
     chmod +x ./entrypoint.sh
 
 # Expose the HTTP interactions port (configurable via PORT env var)
