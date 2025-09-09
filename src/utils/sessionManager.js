@@ -87,6 +87,7 @@ export class SessionManager {
 
     return {
       content,
+      components: [], // Remove buttons when session is stopped
       flags: InteractionResponseFlags.EPHEMERAL,
     };
   }
@@ -188,10 +189,16 @@ export class SessionManager {
       content += `✅ **Session beendet**\n`;
       content += `📊 **Gesamtzeit:** ${this.formatTime(finalDuration)}\n\n`;
     } else if (isActive) {
-      const currentDuration = database.calculateSessionDuration(events);
+      const currentDuration = database.calculateSessionDuration(
+        events,
+        new Date()
+      );
       content += `🟢 **Aktiv** - ${this.formatTime(currentDuration)}\n\n`;
     } else {
-      const currentDuration = database.calculateSessionDuration(events);
+      const currentDuration = database.calculateSessionDuration(
+        events,
+        new Date()
+      );
       content += `⏸️ **Pausiert** - ${this.formatTime(currentDuration)}\n\n`;
     }
 
@@ -270,36 +277,51 @@ export class SessionManager {
   async updateOnlineList(guildId) {
     try {
       const settings = await database.getGuildSettings(guildId);
-      if (!settings?.liveChannelId) return;
+      console.log(`[DEBUG] Guild settings for ${guildId}:`, settings);
+
+      if (!settings?.liveChannelId) {
+        console.log(`[DEBUG] No live channel configured for guild ${guildId}`);
+        return;
+      }
 
       const activeSessions = await database.getAllActiveSessions(guildId);
       const content = this.createOnlineListContent(activeSessions);
+      console.log(`[DEBUG] Online list content:`, content);
 
       if (settings.liveMessageId) {
+        console.log(
+          `[DEBUG] Trying to update existing message ID: ${settings.liveMessageId}`
+        );
         try {
           await editChannelMessage(
             settings.liveChannelId,
             settings.liveMessageId,
             { content }
           );
+          console.log(`[DEBUG] Successfully updated existing message`);
         } catch (error) {
           console.log(
-            `Failed to update online list message (${settings.liveMessageId}), creating new one:`,
+            `[DEBUG] Failed to update online list message (${settings.liveMessageId}), creating new one:`,
             error.message
           );
           // Message deleted or error - create new one
           const message = await sendChannelMessage(settings.liveChannelId, {
             content,
           });
+          console.log(`[DEBUG] Created new message with ID: ${message.id}`);
           await database.setGuildSettings(guildId, {
             liveMessageId: message.id,
           });
         }
       } else {
+        console.log(
+          `[DEBUG] No existing message ID, creating first online list message`
+        );
         // Create first online list message
         const message = await sendChannelMessage(settings.liveChannelId, {
           content,
         });
+        console.log(`[DEBUG] Created first message with ID: ${message.id}`);
         await database.setGuildSettings(guildId, { liveMessageId: message.id });
       }
     } catch (error) {
@@ -318,7 +340,10 @@ export class SessionManager {
     let content = "**Online-Liste**\n\n";
 
     activeSessions.forEach((session) => {
-      const duration = database.calculateSessionDuration(session.events);
+      const duration = database.calculateSessionDuration(
+        session.events,
+        new Date()
+      );
       const status = session.status === "ACTIVE" ? "" : " (pausiert)";
       content += `<@${session.userId}> - ${this.formatTime(
         duration
