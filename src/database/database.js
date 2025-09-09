@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,13 +13,11 @@ export class DatabaseManager {
       process.env.DATABASE_PATH ||
       path.join(__dirname, "../../data/timetracker.db");
 
-    // Ensure directory exists
+    // Ensure directory exists synchronously
     const dbDir = path.dirname(dbPath);
-    import("fs").then((fs) => {
-      if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
-      }
-    });
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
 
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
