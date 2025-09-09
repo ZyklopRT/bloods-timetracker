@@ -131,14 +131,16 @@ export class TimeTrackingManager {
       };
     }
 
-    // Pause the session
-    const pausedTime =
-      Date.now() -
-      activeSession.startTime.getTime() +
-      (activeSession.pausedTime || 0);
-    database.pauseSession(userId, guildId, pausedTime);
+    // Pause the session with current timestamp
+    database.pauseSession(userId, guildId, new Date());
 
-    const embed = createTrackingStatusEmbed(userId, "paused", pausedTime);
+    // Calculate current session time for display
+    const currentSessionTime = this.calculateAdjustedTime(activeSession);
+    const embed = createTrackingStatusEmbed(
+      userId,
+      "paused",
+      currentSessionTime
+    );
     const buttons = createTrackingButtons("paused");
 
     return {
@@ -188,12 +190,12 @@ export class TimeTrackingManager {
    * @returns {number} Adjusted time in milliseconds
    */
   calculateAdjustedTime(session) {
-    if (session.status === "active") {
-      return (
-        Date.now() - session.startTime.getTime() + (session.pausedTime || 0)
-      );
-    } else {
-      return session.pausedTime || 0;
+    // Use the new event-based calculation from database
+    if (session.events) {
+      return database.calculateSessionDuration(session.events);
     }
+
+    // Fallback for sessions without events (shouldn't happen with new system)
+    return 0;
   }
 }

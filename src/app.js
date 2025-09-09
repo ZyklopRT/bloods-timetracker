@@ -9,14 +9,16 @@ import {
 } from "discord-interactions";
 import { DatabaseManager } from "./database/database.js";
 import { TimeTrackingManager } from "./utils/trackingManager.js";
+import { formatTime, validateTrackingChannel } from "./utils/helpers.js";
 import {
-  formatTime,
-  validateTrackingChannel,
-} from "./utils/helpers.js";
+  getDiscordUser,
+  getDiscordUsers,
+  formatUserDisplayName,
+} from "./utils/discordApi.js";
 
 // Create Express app
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Initialize database
 const database = new DatabaseManager();
@@ -200,20 +202,22 @@ async function handleStatusCommand(res, guildId) {
     });
   }
 
-  const statusEntries = activeSessions.map((session) => {
-    const adjustedTime =
-      session.status === "active"
-        ? Date.now() - session.startTime.getTime() + (session.pausedTime || 0)
-        : session.pausedTime || 0;
+  // Fetch Discord user information for all active users
+  const userIds = activeSessions.map((session) => session.userId);
+  const discordUsers = await getDiscordUsers(userIds);
 
+  const trackingManager = new TimeTrackingManager();
+  const statusEntries = activeSessions.map((session) => {
+    const adjustedTime = trackingManager.calculateAdjustedTime(session);
     const statusEmoji = session.status === "active" ? "🟢" : "⏸️";
     const statusText = session.status === "active" ? "Aktiv" : "Pausiert";
+    const userName = formatUserDisplayName(
+      discordUsers[session.userId],
+      session.userId
+    );
 
     return (
-      `${statusEmoji} **User ${session.userId.slice(
-        0,
-        8
-      )}...** - ${statusText}\n` +
+      `${statusEmoji} **${userName}** - ${statusText}\n` +
       `⏱️ Aktuelle Session: ${formatTime(adjustedTime)}\n` +
       `🕐 Gestartet: <t:${Math.floor(session.startTime.getTime() / 1000)}:R>\n`
     );
@@ -247,12 +251,16 @@ async function handleStatsCommand(res, targetUserId, guildId) {
     });
   }
 
+  // Fetch Discord user information
+  const discordUser = await getDiscordUser(targetUserId);
+  const userName = formatUserDisplayName(discordUser, targetUserId);
+
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
       embeds: [
         {
-          title: `📊 Statistiken für User ${targetUserId.slice(0, 8)}...`,
+          title: `📊 Statistiken für ${userName}`,
           fields: [
             {
               name: "⏱️ Gesamtzeit",
@@ -294,6 +302,10 @@ async function handleLeaderboardCommand(res, guildId) {
     });
   }
 
+  // Fetch Discord user information for all leaderboard users
+  const userIds = leaderboard.map((entry) => entry.userId);
+  const discordUsers = await getDiscordUsers(userIds);
+
   const leaderboardText = leaderboard
     .map((entry, index) => {
       const medal =
@@ -304,9 +316,14 @@ async function handleLeaderboardCommand(res, guildId) {
           : index === 2
           ? "🥉"
           : `${index + 1}.`;
-      return `${medal} User ${entry.userId.slice(0, 8)}... - ${formatTime(
-        entry.totalTimeMs
-      )} (${entry.sessionsCount} Sessions)`;
+
+      const userName = formatUserDisplayName(
+        discordUsers[entry.userId],
+        entry.userId
+      );
+      return `${medal} **${userName}** - ${formatTime(entry.totalTimeMs)} (${
+        entry.sessionsCount
+      } Sessions)`;
     })
     .join("\n");
 
@@ -412,4 +429,3 @@ process.on("SIGTERM", () => {
   database.close();
   process.exit(0);
 });
-

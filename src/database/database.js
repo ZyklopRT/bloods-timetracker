@@ -27,20 +27,32 @@ export class DatabaseManager {
   }
 
   initializeTables() {
-    // Create sessions table (compatible with existing structure)
+    // Create sessions table (simplified for event-based tracking)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
         userId TEXT NOT NULL,
         guildId TEXT NOT NULL,
-        startTime TEXT NOT NULL,
-        endTime TEXT,
-        pausedTime INTEGER DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'active',
         createdAt TEXT NOT NULL DEFAULT (datetime('now')),
         updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+
+    // Create session events table for timestamp tracking
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_events (
+        id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+        sessionId TEXT NOT NULL,
+        eventType TEXT NOT NULL, -- 'start', 'pause', 'resume', 'stop'
+        timestamp TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (sessionId) REFERENCES sessions (id)
+      )
+    `);
+
+    // Migrate existing sessions to new structure if needed
+    this.migrateToEventBasedSystem();
 
     // Create guild settings table
     this.db.exec(`
@@ -61,6 +73,70 @@ export class DatabaseManager {
     this.db.exec(
       "CREATE INDEX IF NOT EXISTS idx_sessions_guild_status ON sessions(guildId, status)"
     );
+    this.db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(sessionId)"
+    );
+    this.db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_session_events_type_time ON session_events(eventType, timestamp)"
+    );
+  }
+
+  /**
+   * Migrate existing sessions to event-based system
+   */
+  migrateToEventBasedSystem() {
+    try {
+      // Check if old columns exist
+      const tableInfo = this.db.prepare("PRAGMA table_info(sessions)").all();
+      const hasOldColumns = tableInfo.some((col) => col.name === "startTime");
+
+      if (hasOldColumns) {
+        console.log("📦 Migrating to event-based session tracking...");
+
+        // Get existing sessions
+        const oldSessions = this.db
+          .prepare(
+            `
+          SELECT * FROM sessions 
+          WHERE startTime IS NOT NULL
+        `
+          )
+          .all();
+
+        // Migrate each session
+        for (const session of oldSessions) {
+          // Add start event
+          this.addSessionEvent(
+            session.id,
+            "start",
+            new Date(session.startTime)
+          );
+
+          // Add pause/resume events if they exist
+          if (
+            session.pausedTime &&
+            session.pausedTime > 0 &&
+            session.status === "paused"
+          ) {
+            // Calculate when pause happened (approximate)
+            const pauseTime = new Date(
+              new Date(session.startTime).getTime() + session.pausedTime
+            );
+            this.addSessionEvent(session.id, "pause", pauseTime);
+          }
+
+          // Add stop event if completed
+          if (session.endTime) {
+            this.addSessionEvent(session.id, "stop", new Date(session.endTime));
+          }
+        }
+
+        // Drop old columns (SQLite doesn't support DROP COLUMN directly, so we'll leave them)
+        console.log("✅ Migration to event-based tracking completed");
+      }
+    } catch (error) {
+      console.log("ℹ️ No migration needed or migration failed:", error.message);
+    }
   }
 
   /**
@@ -68,14 +144,44 @@ export class DatabaseManager {
    * @param {string} userId - Discord user ID
    * @param {string} guildId - Discord guild ID
    * @param {Date} startTime - Session start time
+   * @returns {string} Session ID
    */
   startSession(userId, guildId, startTime) {
-    const stmt = this.db.prepare(`
-      INSERT INTO sessions (userId, guildId, startTime, status)
-      VALUES (?, ?, ?, 'active')
+    const sessionStmt = this.db.prepare(`
+      INSERT INTO sessions (userId, guildId, status)
+      VALUES (?, ?, 'active')
     `);
 
-    stmt.run(userId, guildId, startTime.toISOString());
+    const result = sessionStmt.run(userId, guildId);
+    const sessionId = this.db
+      .prepare("SELECT last_insert_rowid() as id")
+      .get().id;
+
+    // Get the actual session ID (hex format)
+    const session = this.db
+      .prepare("SELECT id FROM sessions WHERE rowid = ?")
+      .get(sessionId);
+    const actualSessionId = session.id;
+
+    // Add start event
+    this.addSessionEvent(actualSessionId, "start", startTime);
+
+    return actualSessionId;
+  }
+
+  /**
+   * Add a session event
+   * @param {string} sessionId - Session ID
+   * @param {string} eventType - Event type ('start', 'pause', 'resume', 'stop')
+   * @param {Date} timestamp - Event timestamp
+   */
+  addSessionEvent(sessionId, eventType, timestamp) {
+    const stmt = this.db.prepare(`
+      INSERT INTO session_events (sessionId, eventType, timestamp)
+      VALUES (?, ?, ?)
+    `);
+
+    stmt.run(sessionId, eventType, timestamp.toISOString());
   }
 
   /**
@@ -85,29 +191,47 @@ export class DatabaseManager {
    * @param {Date} endTime - Session end time
    */
   stopSession(userId, guildId, endTime) {
+    const activeSession = this.getActiveSession(userId, guildId);
+    if (!activeSession) {
+      throw new Error("No active session found");
+    }
+
+    // Add stop event
+    this.addSessionEvent(activeSession.id, "stop", endTime);
+
+    // Update session status
     const stmt = this.db.prepare(`
       UPDATE sessions 
-      SET endTime = ?, status = 'completed', updatedAt = datetime('now')
-      WHERE userId = ? AND guildId = ? AND status IN ('active', 'paused')
+      SET status = 'completed', updatedAt = datetime('now')
+      WHERE id = ?
     `);
 
-    stmt.run(endTime.toISOString(), userId, guildId);
+    stmt.run(activeSession.id);
   }
 
   /**
    * Pause an active session
    * @param {string} userId - Discord user ID
    * @param {string} guildId - Discord guild ID
-   * @param {number} pausedTime - Accumulated time in milliseconds
+   * @param {Date} pauseTime - Pause timestamp
    */
-  pauseSession(userId, guildId, pausedTime) {
+  pauseSession(userId, guildId, pauseTime) {
+    const activeSession = this.getActiveSession(userId, guildId);
+    if (!activeSession) {
+      throw new Error("No active session found");
+    }
+
+    // Add pause event
+    this.addSessionEvent(activeSession.id, "pause", pauseTime);
+
+    // Update session status
     const stmt = this.db.prepare(`
       UPDATE sessions 
-      SET status = 'paused', pausedTime = ?, updatedAt = datetime('now')
-      WHERE userId = ? AND guildId = ? AND status = 'active'
+      SET status = 'paused', updatedAt = datetime('now')
+      WHERE id = ?
     `);
 
-    stmt.run(pausedTime, userId, guildId);
+    stmt.run(activeSession.id);
   }
 
   /**
@@ -117,13 +241,22 @@ export class DatabaseManager {
    * @param {Date} resumeTime - Resume time
    */
   resumeSession(userId, guildId, resumeTime) {
+    const activeSession = this.getActiveSession(userId, guildId);
+    if (!activeSession) {
+      throw new Error("No active session found");
+    }
+
+    // Add resume event
+    this.addSessionEvent(activeSession.id, "resume", resumeTime);
+
+    // Update session status
     const stmt = this.db.prepare(`
       UPDATE sessions 
-      SET status = 'active', startTime = ?, updatedAt = datetime('now')
-      WHERE userId = ? AND guildId = ? AND status = 'paused'
+      SET status = 'active', updatedAt = datetime('now')
+      WHERE id = ?
     `);
 
-    stmt.run(resumeTime.toISOString(), userId, guildId);
+    stmt.run(activeSession.id);
   }
 
   /**
@@ -140,13 +273,37 @@ export class DatabaseManager {
 
     const session = stmt.get(userId, guildId);
     if (session) {
-      session.startTime = new Date(session.startTime);
-      if (session.endTime) {
-        session.endTime = new Date(session.endTime);
+      // Get session events
+      session.events = this.getSessionEvents(session.id);
+
+      // Add calculated fields for compatibility
+      if (session.events.length > 0) {
+        const startEvent = session.events.find((e) => e.eventType === "start");
+        if (startEvent) {
+          session.startTime = new Date(startEvent.timestamp);
+        }
       }
     }
 
     return session;
+  }
+
+  /**
+   * Get all events for a session
+   * @param {string} sessionId - Session ID
+   * @returns {Array} Array of session events
+   */
+  getSessionEvents(sessionId) {
+    const stmt = this.db.prepare(`
+      SELECT * FROM session_events 
+      WHERE sessionId = ? 
+      ORDER BY timestamp ASC
+    `);
+
+    return stmt.all(sessionId).map((event) => ({
+      ...event,
+      timestamp: new Date(event.timestamp),
+    }));
   }
 
   /**
@@ -158,17 +315,69 @@ export class DatabaseManager {
     const stmt = this.db.prepare(`
       SELECT * FROM sessions 
       WHERE guildId = ? AND status IN ('active', 'paused')
-      ORDER BY startTime ASC
+      ORDER BY createdAt ASC
     `);
 
     const sessions = stmt.all(guildId);
     return sessions.map((session) => {
-      session.startTime = new Date(session.startTime);
-      if (session.endTime) {
-        session.endTime = new Date(session.endTime);
+      // Get session events
+      session.events = this.getSessionEvents(session.id);
+
+      // Add calculated fields for compatibility
+      if (session.events.length > 0) {
+        const startEvent = session.events.find((e) => e.eventType === "start");
+        if (startEvent) {
+          session.startTime = new Date(startEvent.timestamp);
+        }
       }
+
       return session;
     });
+  }
+
+  /**
+   * Calculate session duration from events
+   * @param {Array} events - Array of session events
+   * @param {Date} currentTime - Current time (for active sessions)
+   * @returns {number} Duration in milliseconds
+   */
+  calculateSessionDuration(events, currentTime = new Date()) {
+    if (!events || events.length === 0) return 0;
+
+    let totalDuration = 0;
+    let lastActiveStart = null;
+
+    for (const event of events) {
+      const timestamp = new Date(event.timestamp);
+
+      switch (event.eventType) {
+        case "start":
+        case "resume":
+          lastActiveStart = timestamp;
+          break;
+
+        case "pause":
+          if (lastActiveStart) {
+            totalDuration += timestamp.getTime() - lastActiveStart.getTime();
+            lastActiveStart = null;
+          }
+          break;
+
+        case "stop":
+          if (lastActiveStart) {
+            totalDuration += timestamp.getTime() - lastActiveStart.getTime();
+            lastActiveStart = null;
+          }
+          break;
+      }
+    }
+
+    // If session is still active (no stop event and has active start)
+    if (lastActiveStart) {
+      totalDuration += currentTime.getTime() - lastActiveStart.getTime();
+    }
+
+    return totalDuration;
   }
 
   /**
@@ -178,36 +387,36 @@ export class DatabaseManager {
    * @returns {Object} User stats
    */
   getUserStats(userId, guildId) {
-    const stmt = this.db.prepare(`
-      SELECT 
-        COUNT(*) as sessionsCount,
-        SUM(
-          CASE 
-            WHEN status = 'completed' THEN 
-              (julianday(endTime) - julianday(startTime)) * 24 * 60 * 60 * 1000
-            WHEN status IN ('active', 'paused') THEN pausedTime
-            ELSE 0
-          END
-        ) as totalTimeMs,
-        MAX(
-          CASE 
-            WHEN status = 'completed' THEN endTime
-            ELSE startTime
-          END
-        ) as lastSeen
-      FROM sessions 
+    // Get all sessions for the user
+    const sessionsStmt = this.db.prepare(`
+      SELECT * FROM sessions 
       WHERE userId = ? AND guildId = ?
     `);
 
-    const stats = stmt.get(userId, guildId);
-    if (stats && stats.lastSeen) {
-      stats.lastSeen = new Date(stats.lastSeen);
+    const sessions = sessionsStmt.all(userId, guildId);
+
+    let totalTimeMs = 0;
+    let lastSeen = null;
+
+    // Calculate total time from all sessions using events
+    for (const session of sessions) {
+      const events = this.getSessionEvents(session.id);
+      const sessionDuration = this.calculateSessionDuration(events);
+      totalTimeMs += sessionDuration;
+
+      // Find the latest event timestamp
+      if (events.length > 0) {
+        const latestEvent = events[events.length - 1];
+        if (!lastSeen || latestEvent.timestamp > lastSeen) {
+          lastSeen = latestEvent.timestamp;
+        }
+      }
     }
 
     return {
-      sessionsCount: stats.sessionsCount || 0,
-      totalTimeMs: Math.round(stats.totalTimeMs || 0),
-      lastSeen: stats.lastSeen,
+      sessionsCount: sessions.length,
+      totalTimeMs: Math.round(totalTimeMs),
+      lastSeen: lastSeen,
     };
   }
 
@@ -218,31 +427,30 @@ export class DatabaseManager {
    * @returns {Array} Leaderboard entries
    */
   getLeaderboard(guildId, limit = 10) {
-    const stmt = this.db.prepare(`
-      SELECT 
-        userId,
-        COUNT(*) as sessionsCount,
-        SUM(
-          CASE 
-            WHEN status = 'completed' THEN 
-              (julianday(endTime) - julianday(startTime)) * 24 * 60 * 60 * 1000
-            WHEN status IN ('active', 'paused') THEN pausedTime
-            ELSE 0
-          END
-        ) as totalTimeMs
-      FROM sessions 
-      WHERE guildId = ?
-      GROUP BY userId 
-      HAVING totalTimeMs > 0
-      ORDER BY totalTimeMs DESC
-      LIMIT ?
+    // Get all users who have sessions
+    const usersStmt = this.db.prepare(`
+      SELECT DISTINCT userId FROM sessions WHERE guildId = ?
     `);
 
-    const leaderboard = stmt.all(guildId, limit);
-    return leaderboard.map((entry) => ({
-      ...entry,
-      totalTimeMs: Math.round(entry.totalTimeMs || 0),
-    }));
+    const users = usersStmt.all(guildId);
+    const leaderboard = [];
+
+    // Calculate total time for each user
+    users.forEach(({ userId }) => {
+      const userStats = this.getUserStats(userId, guildId);
+      if (userStats.totalTimeMs > 0) {
+        leaderboard.push({
+          userId,
+          sessionsCount: userStats.sessionsCount,
+          totalTimeMs: userStats.totalTimeMs,
+        });
+      }
+    });
+
+    // Sort by total time descending and limit results
+    return leaderboard
+      .sort((a, b) => b.totalTimeMs - a.totalTimeMs)
+      .slice(0, limit);
   }
 
   /**
