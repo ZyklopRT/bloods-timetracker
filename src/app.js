@@ -10,7 +10,6 @@ import {
 import { DatabaseManager } from "./database/database.js";
 import { TimeTrackingManager } from "./utils/trackingManager.js";
 import {
-  createUserStatsEmbed,
   formatTime,
   validateTrackingChannel,
 } from "./utils/helpers.js";

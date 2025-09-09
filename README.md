@@ -114,7 +114,7 @@ APPLICATION_ID=your_discord_application_id
 TOKEN=your_discord_bot_token
 PUBLIC_KEY=your_discord_public_key
 
-# SERVER  
+# SERVER
 PORT=3001
 NODE_ENV=production
 
@@ -249,7 +249,7 @@ npm run register
 ### Mit ngrok (für lokales Interaction Testing)
 
 ```bash
-# ngrok installieren und starten  
+# ngrok installieren und starten
 ngrok http 3001
 
 # Tunnel URL in Discord Developer Console setzen

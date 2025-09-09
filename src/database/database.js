@@ -28,18 +28,18 @@ export class DatabaseManager {
   }
 
   initializeTables() {
-    // Create sessions table
+    // Create sessions table (compatible with existing structure)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL,
-        guild_id TEXT NOT NULL,
-        start_time DATETIME NOT NULL,
-        end_time DATETIME,
-        paused_time INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'active',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+        userId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        startTime TEXT NOT NULL,
+        endTime TEXT,
+        pausedTime INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+        updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
 
@@ -57,10 +57,10 @@ export class DatabaseManager {
 
     // Create indexes for better performance
     this.db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_sessions_user_guild ON sessions(user_id, guild_id)"
+      "CREATE INDEX IF NOT EXISTS idx_sessions_user_guild ON sessions(userId, guildId)"
     );
     this.db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_sessions_guild_status ON sessions(guild_id, status)"
+      "CREATE INDEX IF NOT EXISTS idx_sessions_guild_status ON sessions(guildId, status)"
     );
   }
 
@@ -72,7 +72,7 @@ export class DatabaseManager {
    */
   startSession(userId, guildId, startTime) {
     const stmt = this.db.prepare(`
-      INSERT INTO sessions (user_id, guild_id, start_time, status)
+      INSERT INTO sessions (userId, guildId, startTime, status)
       VALUES (?, ?, ?, 'active')
     `);
 
@@ -88,8 +88,8 @@ export class DatabaseManager {
   stopSession(userId, guildId, endTime) {
     const stmt = this.db.prepare(`
       UPDATE sessions 
-      SET end_time = ?, status = 'completed', updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = ? AND guild_id = ? AND status IN ('active', 'paused')
+      SET endTime = ?, status = 'completed', updatedAt = datetime('now')
+      WHERE userId = ? AND guildId = ? AND status IN ('active', 'paused')
     `);
 
     stmt.run(endTime.toISOString(), userId, guildId);
@@ -104,8 +104,8 @@ export class DatabaseManager {
   pauseSession(userId, guildId, pausedTime) {
     const stmt = this.db.prepare(`
       UPDATE sessions 
-      SET status = 'paused', paused_time = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = ? AND guild_id = ? AND status = 'active'
+      SET status = 'paused', pausedTime = ?, updatedAt = datetime('now')
+      WHERE userId = ? AND guildId = ? AND status = 'active'
     `);
 
     stmt.run(pausedTime, userId, guildId);
@@ -120,8 +120,8 @@ export class DatabaseManager {
   resumeSession(userId, guildId, resumeTime) {
     const stmt = this.db.prepare(`
       UPDATE sessions 
-      SET status = 'active', start_time = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = ? AND guild_id = ? AND status = 'paused'
+      SET status = 'active', startTime = ?, updatedAt = datetime('now')
+      WHERE userId = ? AND guildId = ? AND status = 'paused'
     `);
 
     stmt.run(resumeTime.toISOString(), userId, guildId);
@@ -136,14 +136,14 @@ export class DatabaseManager {
   getActiveSession(userId, guildId) {
     const stmt = this.db.prepare(`
       SELECT * FROM sessions 
-      WHERE user_id = ? AND guild_id = ? AND status IN ('active', 'paused')
+      WHERE userId = ? AND guildId = ? AND status IN ('active', 'paused')
     `);
 
     const session = stmt.get(userId, guildId);
     if (session) {
-      session.startTime = new Date(session.start_time);
-      if (session.end_time) {
-        session.endTime = new Date(session.end_time);
+      session.startTime = new Date(session.startTime);
+      if (session.endTime) {
+        session.endTime = new Date(session.endTime);
       }
     }
 
@@ -158,15 +158,15 @@ export class DatabaseManager {
   getAllActiveSessions(guildId) {
     const stmt = this.db.prepare(`
       SELECT * FROM sessions 
-      WHERE guild_id = ? AND status IN ('active', 'paused')
-      ORDER BY start_time ASC
+      WHERE guildId = ? AND status IN ('active', 'paused')
+      ORDER BY startTime ASC
     `);
 
     const sessions = stmt.all(guildId);
     return sessions.map((session) => {
-      session.startTime = new Date(session.start_time);
-      if (session.end_time) {
-        session.endTime = new Date(session.end_time);
+      session.startTime = new Date(session.startTime);
+      if (session.endTime) {
+        session.endTime = new Date(session.endTime);
       }
       return session;
     });
@@ -185,19 +185,19 @@ export class DatabaseManager {
         SUM(
           CASE 
             WHEN status = 'completed' THEN 
-              (julianday(end_time) - julianday(start_time)) * 24 * 60 * 60 * 1000
-            WHEN status IN ('active', 'paused') THEN paused_time
+              (julianday(endTime) - julianday(startTime)) * 24 * 60 * 60 * 1000
+            WHEN status IN ('active', 'paused') THEN pausedTime
             ELSE 0
           END
         ) as totalTimeMs,
         MAX(
           CASE 
-            WHEN status = 'completed' THEN end_time
-            ELSE start_time
+            WHEN status = 'completed' THEN endTime
+            ELSE startTime
           END
         ) as lastSeen
       FROM sessions 
-      WHERE user_id = ? AND guild_id = ?
+      WHERE userId = ? AND guildId = ?
     `);
 
     const stats = stmt.get(userId, guildId);
@@ -221,19 +221,19 @@ export class DatabaseManager {
   getLeaderboard(guildId, limit = 10) {
     const stmt = this.db.prepare(`
       SELECT 
-        user_id as userId,
+        userId,
         COUNT(*) as sessionsCount,
         SUM(
           CASE 
             WHEN status = 'completed' THEN 
-              (julianday(end_time) - julianday(start_time)) * 24 * 60 * 60 * 1000
-            WHEN status IN ('active', 'paused') THEN paused_time
+              (julianday(endTime) - julianday(startTime)) * 24 * 60 * 60 * 1000
+            WHEN status IN ('active', 'paused') THEN pausedTime
             ELSE 0
           END
         ) as totalTimeMs
       FROM sessions 
-      WHERE guild_id = ?
-      GROUP BY user_id 
+      WHERE guildId = ?
+      GROUP BY userId 
       HAVING totalTimeMs > 0
       ORDER BY totalTimeMs DESC
       LIMIT ?
