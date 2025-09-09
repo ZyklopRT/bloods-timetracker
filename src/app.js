@@ -148,12 +148,7 @@ app.post(
 
 // Command handlers
 async function handleStartCommand(res, userId, guildId, channelId) {
-  const trackingManager = new TimeTrackingManager();
-  const result = await trackingManager.startTracking(
-    userId,
-    guildId,
-    channelId
-  );
+  const result = await sessionManager.startSession(userId, guildId, channelId);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
