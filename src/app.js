@@ -9,6 +9,7 @@ import {
 } from "discord-interactions";
 import PrismaService from "./database/prisma.js";
 import { TimeTrackingManager } from "./utils/trackingManager.js";
+import { LiveChannelManager } from "./utils/liveChannelManager.js";
 import { formatTime, validateTrackingChannel } from "./utils/helpers.js";
 import {
   getDiscordUser,
@@ -22,6 +23,7 @@ const PORT = process.env.PORT || 3001;
 
 // Initialize database
 const database = new PrismaService();
+const liveChannelManager = new LiveChannelManager();
 
 /**
  * Interactions endpoint URL where Discord will send HTTP requests
@@ -383,7 +385,17 @@ async function handleSettingsCommand(res, options, guildId) {
     );
     const channelId = channelOption?.value || null;
 
+    if (!channelId) {
+      // Disabling live channel - clear the live message first
+      await liveChannelManager.clearLiveMessage(guildId);
+    }
+
     await database.setGuildSettings(guildId, { liveChannelId: channelId });
+
+    if (channelId) {
+      // Update the live message for the new channel
+      await liveChannelManager.updateLiveMessage(guildId);
+    }
 
     const message = channelId
       ? `✅ Live-Tracking in <#${channelId}> aktiviert.`

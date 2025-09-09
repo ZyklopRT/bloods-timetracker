@@ -60,6 +60,47 @@ export async function editOriginalMessage(
 }
 
 /**
+ * Send a message to a specific channel
+ * @param {string} channelId - Channel ID to send message to
+ * @param {Object} messageContent - Message content object
+ * @returns {Promise<Object>} Message object
+ */
+export async function sendChannelMessage(channelId, messageContent) {
+  const endpoint = `channels/${channelId}/messages`;
+
+  try {
+    const response = await DiscordRequest(endpoint, {
+      method: "POST",
+      body: messageContent,
+    });
+    return response;
+  } catch (error) {
+    console.error("Error sending channel message:", error);
+    throw error;
+  }
+}
+
+/**
+ * Edit a specific message in a channel
+ * @param {string} channelId - Channel ID
+ * @param {string} messageId - Message ID to edit
+ * @param {Object} messageContent - New message content
+ */
+export async function editChannelMessage(channelId, messageId, messageContent) {
+  const endpoint = `channels/${channelId}/messages/${messageId}`;
+
+  try {
+    await DiscordRequest(endpoint, {
+      method: "PATCH",
+      body: messageContent,
+    });
+  } catch (error) {
+    console.error("Error editing channel message:", error);
+    throw error;
+  }
+}
+
+/**
  * Get Discord user information
  * @param {string} userId - Discord user ID
  * @returns {Object|null} User object or null if not found

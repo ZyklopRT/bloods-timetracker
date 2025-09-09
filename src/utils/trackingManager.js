@@ -7,9 +7,11 @@ import {
   createTrackingStopEmbed,
   createTrackingStatusEmbed,
 } from "./helpers.js";
+import { LiveChannelManager } from "./liveChannelManager.js";
 import { InteractionResponseFlags } from "discord-interactions";
 
 const database = new PrismaService();
+const liveChannelManager = new LiveChannelManager();
 
 export class TimeTrackingManager {
   /**
@@ -21,7 +23,7 @@ export class TimeTrackingManager {
    */
   async startTracking(userId, guildId, channelId) {
     // Validate channel permissions
-    const channelValidation = validateTrackingChannel(guildId, channelId);
+    const channelValidation = await validateTrackingChannel(guildId, channelId);
     if (!channelValidation.isValid) {
       return {
         content: channelValidation.message,
@@ -52,6 +54,9 @@ export class TimeTrackingManager {
     const startTime = Date.now();
     await database.startSession(userId, guildId, new Date(startTime));
 
+    // Update live channel message
+    await liveChannelManager.updateLiveMessage(guildId);
+
     const embed = createTrackingStartEmbed(userId, startTime);
     const buttons = createTrackingButtons("active");
 
@@ -70,7 +75,7 @@ export class TimeTrackingManager {
    */
   async stopTracking(userId, guildId, channelId) {
     // Validate channel permissions
-    const channelValidation = validateTrackingChannel(guildId, channelId);
+    const channelValidation = await validateTrackingChannel(guildId, channelId);
     if (!channelValidation.isValid) {
       return {
         content: channelValidation.message,
@@ -93,6 +98,9 @@ export class TimeTrackingManager {
 
     // Stop the session
     await database.stopSession(userId, guildId, endTime);
+
+    // Update live channel message
+    await liveChannelManager.updateLiveMessage(guildId);
 
     // Get updated user stats
     const userStats = await database.getUserStats(userId, guildId);
@@ -134,6 +142,9 @@ export class TimeTrackingManager {
     // Pause the session with current timestamp
     await database.pauseSession(userId, guildId, new Date());
 
+    // Update live channel message
+    await liveChannelManager.updateLiveMessage(guildId);
+
     // Calculate current session time for display
     const currentSessionTime = this.calculateAdjustedTime(activeSession);
     const embed = createTrackingStatusEmbed(
@@ -173,7 +184,12 @@ export class TimeTrackingManager {
 
     // Resume the session
     await database.resumeSession(userId, guildId, new Date());
-    const currentTime = activeSession.pausedTime || 0;
+
+    // Update live channel message
+    await liveChannelManager.updateLiveMessage(guildId);
+
+    // Calculate accumulated time from events
+    const currentTime = database.calculateSessionDuration(activeSession.events);
 
     const embed = createTrackingStatusEmbed(userId, "active", currentTime);
     const buttons = createTrackingButtons("active");

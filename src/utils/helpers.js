@@ -27,21 +27,23 @@ export function formatTime(ms) {
  * @returns {number} Adjusted time in milliseconds
  */
 export function calculateAdjustedTime(session) {
-  if (session.status === "active") {
-    return Date.now() - session.startTime.getTime() + (session.pausedTime || 0);
-  } else {
-    return session.pausedTime || 0;
+  // Use the event-based calculation from database
+  if (session.events) {
+    return database.calculateSessionDuration(session.events);
   }
+
+  // Fallback for sessions without events (shouldn't happen with new system)
+  return 0;
 }
 
 /**
  * Validates if the current channel is allowed for time tracking
  * @param {string} guildId - Guild ID
  * @param {string} channelId - Channel ID
- * @returns {Object} Validation result with isValid and message
+ * @returns {Promise<Object>} Validation result with isValid and message
  */
-export function validateTrackingChannel(guildId, channelId) {
-  const settings = database.getGuildSettings(guildId);
+export async function validateTrackingChannel(guildId, channelId) {
+  const settings = await database.getGuildSettings(guildId);
 
   // If no tracking channel is set, allow all channels
   if (!settings?.trackingChannelId) {
