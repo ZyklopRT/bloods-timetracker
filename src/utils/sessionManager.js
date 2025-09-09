@@ -345,7 +345,9 @@ export class SessionManager {
 
     activeSessions.forEach((session) => {
       const startEvent = session.events.find((e) => e.eventType === "START");
-      const startTime = `<t:${Math.floor(new Date(startEvent.timestamp).getTime() / 1000)}:R>`;
+      const startTime = `<t:${Math.floor(
+        new Date(startEvent.timestamp).getTime() / 1000
+      )}:R>`;
       const status = session.status === "ACTIVE" ? "" : " (pausiert)";
       content += `<@${session.userId}> - seit ${startTime}${status}\n`;
     });
