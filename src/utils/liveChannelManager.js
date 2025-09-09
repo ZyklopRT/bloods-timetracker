@@ -29,12 +29,29 @@ export class LiveChannelManager {
       );
 
       if (settings.liveMessageId) {
-        // Update existing message
-        await editChannelMessage(
-          settings.liveChannelId,
-          settings.liveMessageId,
-          messageContent
-        );
+        // Try to update existing message
+        try {
+          await editChannelMessage(
+            settings.liveChannelId,
+            settings.liveMessageId,
+            messageContent
+          );
+        } catch (error) {
+          console.log(
+            `Failed to update existing live message (${settings.liveMessageId}), creating new one:`,
+            error.message
+          );
+          // If update fails (message deleted, permissions, etc.), create a new message
+          const message = await sendChannelMessage(
+            settings.liveChannelId,
+            messageContent
+          );
+
+          // Save the new message ID
+          await database.setGuildSettings(guildId, {
+            liveMessageId: message.id,
+          });
+        }
       } else {
         // Create new live message
         const message = await sendChannelMessage(

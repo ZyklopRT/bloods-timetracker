@@ -92,11 +92,14 @@ export class TimeTrackingManager {
       };
     }
 
-    // Calculate session duration
+    // Calculate session duration BEFORE stopping (since we need the current time)
     const endTime = new Date();
-    const adjustedTime = this.calculateAdjustedTime(activeSession);
+    const adjustedTime = database.calculateSessionDuration(
+      activeSession.events,
+      endTime
+    );
 
-    // Stop the session
+    // Stop the session (adds STOP event)
     await database.stopSession(userId, guildId, endTime);
 
     // Update live channel message
@@ -139,14 +142,18 @@ export class TimeTrackingManager {
       };
     }
 
+    // Calculate current session time BEFORE pausing
+    const pauseTime = new Date();
+    const currentSessionTime = database.calculateSessionDuration(
+      activeSession.events,
+      pauseTime
+    );
+
     // Pause the session with current timestamp
-    await database.pauseSession(userId, guildId, new Date());
+    await database.pauseSession(userId, guildId, pauseTime);
 
     // Update live channel message
     await liveChannelManager.updateLiveMessage(guildId);
-
-    // Calculate current session time for display
-    const currentSessionTime = this.calculateAdjustedTime(activeSession);
     const embed = createTrackingStatusEmbed(
       userId,
       "paused",
