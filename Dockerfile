@@ -13,8 +13,8 @@ RUN npm ci --only=production
 # Production stage
 FROM node:18-alpine AS production
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init and su-exec for proper signal handling and user switching
+RUN apk add --no-cache dumb-init su-exec
 
 WORKDIR /app
 
@@ -32,14 +32,11 @@ COPY src/ ./src/
 # Copy entrypoint script
 COPY entrypoint.sh ./entrypoint.sh
 
-# Create data directory for SQLite database persistence
+# Create data directory for SQLite database persistence and set permissions
 RUN mkdir -p ./data && \
     chown -R nodeapp:nodejs /app && \
     chmod 755 ./data && \
     chmod +x ./entrypoint.sh
-
-# Switch to non-root user
-USER nodeapp
 
 # Expose the HTTP interactions port (configurable via PORT env var)
 EXPOSE 3001

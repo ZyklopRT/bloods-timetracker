@@ -79,9 +79,9 @@ GUILD_ID=deine_test_guild_id
 
 ### Volumes für persistente Daten
 
-- **Source:** `/app/data`
-- **Destination:** `/var/lib/coolify/data/timetracker`
-- **Type:** bind
+- **Source Path (Host):** `/var/lib/coolify/data/timetracker`
+- **Destination Path (Container):** `/app/data`
+- **Type:** Directory mount
 
 ## 4. Deployment
 
