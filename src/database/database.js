@@ -120,85 +120,116 @@ export class DatabaseManager {
   performMigration() {
     console.log("📦 Migrating to event-based session tracking...");
 
-    // Create new tables
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions_new (
-        id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
-        userId TEXT NOT NULL,
-        guildId TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active',
-        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-        updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `);
+    // Use a transaction for atomic migration
+    this.db.exec("BEGIN TRANSACTION");
 
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS session_events (
-        id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
-        sessionId TEXT NOT NULL,
-        eventType TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (sessionId) REFERENCES sessions_new (id)
-      )
-    `);
+    try {
+      // Check if migration was already completed
+      const migrationCheck = this.db
+        .prepare(
+          `
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='session_events'
+      `
+        )
+        .get();
 
-    // Migrate data from old sessions table
-    const oldSessions = this.db.prepare(`SELECT * FROM sessions`).all();
+      if (migrationCheck) {
+        console.log("✅ Migration already completed");
+        this.db.exec("COMMIT");
+        return;
+      }
 
-    for (const session of oldSessions) {
-      // Insert into new sessions table
-      const newSessionStmt = this.db.prepare(`
-        INSERT INTO sessions_new (id, userId, guildId, status, createdAt, updatedAt)
+      // Disable foreign key constraints during migration
+      this.db.exec("PRAGMA foreign_keys = OFF");
+
+      // Create session events table first (without foreign key constraints)
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS session_events (
+          id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+          sessionId TEXT NOT NULL,
+          eventType TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+
+      // Create new sessions table
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS sessions_new (
+          id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+          userId TEXT NOT NULL,
+          guildId TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active',
+          createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+          updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+
+      // Get old sessions data
+      const oldSessions = this.db.prepare(`SELECT * FROM sessions`).all();
+
+      // Prepare statements
+      const insertSessionStmt = this.db.prepare(`
+        INSERT OR IGNORE INTO sessions_new (id, userId, guildId, status, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?)
       `);
 
-      newSessionStmt.run(
-        session.id,
-        session.userId,
-        session.guildId,
-        session.status,
-        session.createdAt,
-        session.updatedAt
-      );
+      const insertEventStmt = this.db.prepare(`
+        INSERT INTO session_events (sessionId, eventType, timestamp)
+        VALUES (?, ?, ?)
+      `);
 
-      // Create events for this session
-      if (session.startTime) {
-        this.addSessionEventDirect(
+      // Migrate each session
+      for (const session of oldSessions) {
+        // Insert session data
+        insertSessionStmt.run(
           session.id,
-          "start",
-          new Date(session.startTime)
+          session.userId,
+          session.guildId,
+          session.status,
+          session.createdAt || new Date().toISOString(),
+          session.updatedAt || new Date().toISOString()
         );
+
+        // Create events for this session
+        if (session.startTime) {
+          insertEventStmt.run(session.id, "start", session.startTime);
+        }
+
+        if (
+          session.pausedTime &&
+          session.pausedTime > 0 &&
+          session.status === "paused"
+        ) {
+          const pauseTime = new Date(
+            new Date(session.startTime).getTime() + (session.pausedTime || 0)
+          );
+          insertEventStmt.run(session.id, "pause", pauseTime.toISOString());
+        }
+
+        if (session.endTime) {
+          insertEventStmt.run(session.id, "stop", session.endTime);
+        }
       }
 
-      if (
-        session.pausedTime &&
-        session.pausedTime > 0 &&
-        session.status === "paused"
-      ) {
-        const pauseTime = new Date(
-          new Date(session.startTime).getTime() + (session.pausedTime || 0)
-        );
-        this.addSessionEventDirect(session.id, "pause", pauseTime);
-      }
+      // Replace old table with new one
+      this.db.exec(`DROP TABLE sessions`);
+      this.db.exec(`ALTER TABLE sessions_new RENAME TO sessions`);
 
-      if (session.endTime) {
-        this.addSessionEventDirect(
-          session.id,
-          "stop",
-          new Date(session.endTime)
-        );
-      }
+      // Re-enable foreign key constraints
+      this.db.exec("PRAGMA foreign_keys = ON");
+
+      // Create indexes after migration
+      this.createIndexes();
+
+      this.db.exec("COMMIT");
+      console.log("✅ Migration to event-based tracking completed");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      console.error("❌ Migration failed:", error);
+      throw error;
     }
-
-    // Replace old table with new one
-    this.db.exec(`DROP TABLE sessions`);
-    this.db.exec(`ALTER TABLE sessions_new RENAME TO sessions`);
-
-    // Create indexes after migration
-    this.createIndexes();
-
-    console.log("✅ Migration to event-based tracking completed");
   }
 
   /**
