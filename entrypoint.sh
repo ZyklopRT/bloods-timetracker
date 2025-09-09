@@ -4,10 +4,10 @@
 if [ "$(id -u)" = "0" ]; then
     # Run database migrations
     echo "🔄 Running database migrations..."
-    su-exec nodeapp npx prisma migrate deploy
+    gosu nodeapp npx prisma migrate deploy
     
     # Switch to nodeapp user and execute command
-    exec su-exec nodeapp "$@"
+    exec gosu nodeapp "$@"
 else
     # Already running as nodeapp user, run migrations and execute command
     echo "🔄 Running database migrations..."

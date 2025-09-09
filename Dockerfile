@@ -19,7 +19,7 @@ FROM node:18-slim AS production
 
 # Install required packages for proper signal handling and OpenSSL
 RUN apt-get update && \
-    apt-get install -y dumb-init openssl && \
+    apt-get install -y dumb-init openssl gosu && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
