@@ -338,7 +338,7 @@ export class SessionManager {
    */
   createOnlineListContent(activeSessions) {
     if (activeSessions.length === 0) {
-      return "**Online-Liste**\n\nZeit niemand online.";
+      return "**Online-Liste**\n\nZurzeit niemand online.";
     }
 
     let content = "**Online-Liste**\n\n";
