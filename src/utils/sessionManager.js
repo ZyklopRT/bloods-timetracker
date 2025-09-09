@@ -193,7 +193,11 @@ export class SessionManager {
         events,
         new Date()
       );
-      content += `🟢 **Aktiv** - ${this.formatTime(currentDuration)}\n\n`;
+      const startEvent = events.find((e) => e.eventType === "START");
+      const startTime = `<t:${Math.floor(
+        new Date(startEvent.timestamp).getTime() / 1000
+      )}:R>`;
+      content += `🟢 **Aktiv** seit ${startTime}\n\n`;
     } else {
       const currentDuration = database.calculateSessionDuration(
         events,
@@ -340,14 +344,10 @@ export class SessionManager {
     let content = "**Online-Liste**\n\n";
 
     activeSessions.forEach((session) => {
-      const duration = database.calculateSessionDuration(
-        session.events,
-        new Date()
-      );
+      const startEvent = session.events.find((e) => e.eventType === "START");
+      const startTime = `<t:${Math.floor(new Date(startEvent.timestamp).getTime() / 1000)}:R>`;
       const status = session.status === "ACTIVE" ? "" : " (pausiert)";
-      content += `<@${session.userId}> - ${this.formatTime(
-        duration
-      )}${status}\n`;
+      content += `<@${session.userId}> - seit ${startTime}${status}\n`;
     });
 
     content += `\n*${activeSessions.length} Benutzer online*`;
