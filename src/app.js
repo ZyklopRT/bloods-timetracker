@@ -61,15 +61,20 @@ app.post(
             return await handleStopCommand(res, userId, guildId, channelId);
 
           case "status":
-            return await handleStatusCommand(res, guildId);
+            return await handleStatusCommand(res, guildId, channelId);
 
           case "stats":
             const targetUserId =
               options?.find((opt) => opt.name === "user")?.value || userId;
-            return await handleStatsCommand(res, targetUserId, guildId);
+            return await handleStatsCommand(
+              res,
+              targetUserId,
+              guildId,
+              channelId
+            );
 
           case "leaderboard":
-            return await handleLeaderboardCommand(res, guildId);
+            return await handleLeaderboardCommand(res, guildId, channelId);
 
           case "settings":
             if (!member?.permissions || !(parseInt(member.permissions) & 0x8)) {
@@ -109,6 +114,18 @@ app.post(
       const userId = user?.id || member?.user?.id;
 
       try {
+        // Check channel permission for session control buttons
+        const permission = await checkChannelPermission(guildId, channel_id);
+        if (!permission.allowed) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: permission.message,
+              flags: InteractionResponseFlags.EPHEMERAL,
+            },
+          });
+        }
+
         let result;
         switch (custom_id) {
           case "pause_session":
@@ -146,8 +163,44 @@ app.post(
   }
 );
 
+/**
+ * Check if a command is allowed in the current channel
+ * @param {string} guildId - Discord guild ID
+ * @param {string} channelId - Current channel ID
+ * @returns {Promise<{allowed: boolean, message?: string}>}
+ */
+async function checkChannelPermission(guildId, channelId) {
+  const settings = await database.getGuildSettings(guildId);
+
+  // If no tracking channel is set, allow in all channels
+  if (!settings || !settings.trackingChannelId) {
+    return { allowed: true };
+  }
+
+  // If tracking channel is set, only allow in that channel
+  if (channelId !== settings.trackingChannelId) {
+    return {
+      allowed: false,
+      message: `❌ Zeiterfassung-Befehle sind nur in <#${settings.trackingChannelId}> erlaubt.`,
+    };
+  }
+
+  return { allowed: true };
+}
+
 // Command handlers
 async function handleStartCommand(res, userId, guildId, channelId) {
+  const permission = await checkChannelPermission(guildId, channelId);
+  if (!permission.allowed) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: permission.message,
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
   const result = await sessionManager.startSession(userId, guildId, channelId);
 
   return res.send({
@@ -157,6 +210,17 @@ async function handleStartCommand(res, userId, guildId, channelId) {
 }
 
 async function handleStopCommand(res, userId, guildId, channelId) {
+  const permission = await checkChannelPermission(guildId, channelId);
+  if (!permission.allowed) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: permission.message,
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
   const result = await sessionManager.stopSession(userId, guildId);
 
   return res.send({
@@ -167,7 +231,18 @@ async function handleStopCommand(res, userId, guildId, channelId) {
 
 // Button interactions are now handled directly in the MESSAGE_COMPONENT section
 
-async function handleStatusCommand(res, guildId) {
+async function handleStatusCommand(res, guildId, channelId) {
+  const permission = await checkChannelPermission(guildId, channelId);
+  if (!permission.allowed) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: permission.message,
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
   const activeSessions = await database.getAllActiveSessions(guildId);
   const content = sessionManager.createOnlineListContent(activeSessions);
 
@@ -180,7 +255,18 @@ async function handleStatusCommand(res, guildId) {
   });
 }
 
-async function handleStatsCommand(res, targetUserId, guildId) {
+async function handleStatsCommand(res, targetUserId, guildId, channelId) {
+  const permission = await checkChannelPermission(guildId, channelId);
+  if (!permission.allowed) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: permission.message,
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
   const content = await sessionManager.getUserStats(targetUserId, guildId);
 
   return res.send({
@@ -192,7 +278,18 @@ async function handleStatsCommand(res, targetUserId, guildId) {
   });
 }
 
-async function handleLeaderboardCommand(res, guildId) {
+async function handleLeaderboardCommand(res, guildId, channelId) {
+  const permission = await checkChannelPermission(guildId, channelId);
+  if (!permission.allowed) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: permission.message,
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
   const content = await sessionManager.getLeaderboard(guildId, 10);
 
   return res.send({
