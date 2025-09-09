@@ -73,7 +73,8 @@ export async function sendChannelMessage(channelId, messageContent) {
       method: "POST",
       body: messageContent,
     });
-    return response;
+    const messageData = await response.json();
+    return messageData;
   } catch (error) {
     console.error("Error sending channel message:", error);
     throw error;
