@@ -1,57 +1,50 @@
-# Multi-stage build for optimal image size and security
-FROM node:20-alpine AS builder
+# Multi-stage build for HTTP Interactions version
+FROM node:18-alpine AS builder
 
-# Install build dependencies including Python for native modules
+# Install build dependencies for native modules
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Copy package files and install all dependencies (including dev)
+# Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --include=dev
-
-# Copy source code and build
-COPY src/ ./src/
-COPY tsconfig.json ./
-RUN npm run build
+RUN npm ci --only=production
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:18-alpine AS production
 
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
 
 WORKDIR /app
 
-# Copy package files and install production dependencies only
-COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy built application from builder stage
-COPY --from=builder /app/dist/ ./dist/
-
-# Copy startup script
-COPY scripts/startup.sh ./scripts/startup.sh
-
-# Create data directory for SQLite database persistence
-RUN mkdir -p ./data
-
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodeapp -u 1001 && \
-    chown -R nodeapp:nodejs /app && \
-    chmod +x ./scripts/startup.sh
+    adduser -S nodeapp -u 1001
+
+# Copy package files and node_modules from builder
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+# Copy application source code
+COPY src/ ./src/
+
+# Create data directory for SQLite database persistence
+RUN mkdir -p ./data && \
+    chown -R nodeapp:nodejs /app
 
 # Switch to non-root user
 USER nodeapp
 
-# Expose health check endpoint (if implemented)
-EXPOSE 3000
+# Expose the HTTP interactions port (configurable via PORT env var)
+EXPOSE 3001
 
-# Health check - check if bot process is running
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD ps aux | grep -v grep | grep "node dist/index.js" || exit 1
+# Health check - check if HTTP server responds (uses PORT env var or default 3001)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "const http=require('http'); const port=process.env.PORT||3001; const options={hostname:'localhost',port:port,path:'/health',timeout:5000}; const req=http.request(options, (res)=>{if(res.statusCode===200){process.exit(0)}else{process.exit(1)}}); req.on('error',()=>process.exit(1)); req.on('timeout',()=>process.exit(1)); req.end();"
 
-# Use dumb-init to handle signals properly and run startup script
+# Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["./scripts/startup.sh"]
+
+# Run the HTTP interactions server
+CMD ["npm", "start"]

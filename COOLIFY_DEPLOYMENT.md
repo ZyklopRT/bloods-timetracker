@@ -1,13 +1,14 @@
 # Discord Bot Deployment mit Coolify 🚀
 
-Diese Anleitung zeigt dir, wie du deinen Discord Time Tracker Bot mit Coolify hostest.
+Diese Anleitung zeigt dir, wie du deinen Discord Time Tracker Bot (HTTP Interactions Version) mit Coolify hostest.
 
 ## Voraussetzungen
 
 - Server/VPS mit SSH Zugang
 - Docker installiert
 - Git Repository (GitHub/GitLab/etc.)
-- Discord Bot Token und Application ID
+- Discord Bot Token, Application ID und Public Key
+- Öffentlich erreichbare Domain/URL (für Interactions Endpoint)
 
 ## 1. Coolify Installation
 
@@ -20,8 +21,9 @@ curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ### Build für Production
 
 ```bash
-# Nicht mehr nötig! 
-# Build passiert automatisch im Dockerfile
+# Nicht mehr nötig!
+# HTTP Interactions Version verwendet direkte JavaScript Dateien
+# Kein TypeScript Build erforderlich
 ```
 
 ### Git Repository
@@ -49,18 +51,31 @@ git push origin main
 3. Branch: `main`
 4. Build Command: Leer lassen (wird im Dockerfile gemacht)
 5. Start Command: Leer lassen (wird im Dockerfile gemacht)
+6. **Port:** 3001 (HTTP Interactions Port - konfigurierbar über PORT env var)
+7. **Domain:** Deine öffentliche URL konfigurieren
 
 ### Environment Variables
 
-Füge folgende Environment Variables hinzu:
+**WICHTIG für HTTP Interactions:** Füge folgende Environment Variables hinzu:
 
 ```env
+# ERFORDERLICH - Discord Bot Credentials
 TOKEN=dein_discord_bot_token
 APPLICATION_ID=deine_discord_application_id
 PUBLIC_KEY=dein_discord_public_key
-DATABASE_PATH=/app/data/timetracker.db
+
+# SERVER KONFIGURATION
+PORT=3001
 NODE_ENV=production
+
+# DATABASE
+DATABASE_PATH=/app/data/timetracker.db
+
+# OPTIONAL - nur für Development/Testing
+GUILD_ID=deine_test_guild_id
 ```
+
+**⚠️ WICHTIG:** HTTP Interactions benötigen **PUBLIC_KEY** und eine **öffentlich erreichbare URL**!
 
 ### Volumes für persistente Daten
 
@@ -72,7 +87,17 @@ NODE_ENV=production
 
 1. **Deploy** Button klicken
 2. Build Logs überwachen
-3. Bot Status in Discord überprüfen
+3. **Commands registrieren:**
+   ```bash
+   # In Container ausführen oder lokal:
+   npm run register
+   ```
+4. **Discord Interactions Endpoint setzen:**
+   - Discord Developer Console → Deine Application
+   - **General Information** → **Interactions Endpoint URL**
+   - Setze: `https://deine-domain.com/interactions`
+   - **Save Changes**
+5. Bot Status in Discord überprüfen
 
 ## 5. Monitoring
 
@@ -80,10 +105,11 @@ NODE_ENV=production
 
 Coolify überwacht automatisch:
 
-- Container Status
+- Container Status (HTTP Health Check: `/health`)
 - Memory Usage
 - CPU Usage
 - Application Logs
+- HTTP Response Codes
 
 ### Logs einsehen
 
@@ -112,9 +138,18 @@ git push origin main
 
 ### Bot startet nicht
 
-1. Environment Variables überprüfen
+1. Environment Variables überprüfen (inkl. PUBLIC_KEY)
 2. Database Pfad kontrollieren
-3. Docker Container Logs checken
+3. Port verfügbar? (Standard: 3001, konfigurierbar über PORT env var)
+4. Docker Container Logs checken
+5. Interactions Endpoint erreichbar? (curl https://domain.com/interactions)
+
+### Interactions funktionieren nicht
+
+1. **PUBLIC_KEY korrekt?** (Exakt aus Discord Developer Console kopieren)
+2. **Endpoint URL korrekt?** (Muss https://domain.com/interactions sein)
+3. **Commands registriert?** (npm run register ausführen)
+4. **HTTPS erforderlich** (Discord akzeptiert nur HTTPS Endpoints)
 
 ### Database Issues
 
