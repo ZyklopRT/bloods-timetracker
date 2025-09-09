@@ -8,7 +8,6 @@ const database = new PrismaService();
  * Simple, clean session management
  */
 export class SessionManager {
-  
   /**
    * Format milliseconds to readable time
    */
@@ -17,7 +16,7 @@ export class SessionManager {
     const totalMinutes = Math.floor(ms / 60000);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes}min`;
     }
@@ -41,8 +40,10 @@ export class SessionManager {
     // Update online list
     await this.updateOnlineList(guildId);
 
-    const content = this.createSessionContent(userId, [{ type: 'START', time: startTime }], true);
-    
+    // Get the fresh session with events to display
+    const newSession = await database.getActiveSession(userId, guildId);
+    const content = this.createSessionContent(userId, newSession.events, true);
+
     return {
       content,
       components: [this.createSessionButtons(true)],
@@ -51,7 +52,7 @@ export class SessionManager {
   }
 
   /**
-   * Stop tracking for a user  
+   * Stop tracking for a user
    */
   async stopSession(userId, guildId) {
     const activeSession = await database.getActiveSession(userId, guildId);
@@ -63,17 +64,26 @@ export class SessionManager {
     }
 
     const stopTime = new Date();
-    const sessionDuration = database.calculateSessionDuration(activeSession.events, stopTime);
-    
+    const sessionDuration = database.calculateSessionDuration(
+      activeSession.events,
+      stopTime
+    );
+
     // Stop the session
     await database.stopSession(userId, guildId, stopTime);
 
     // Update online list
     await this.updateOnlineList(guildId);
 
-    // Get all events for summary
-    const allEvents = [...activeSession.events, { eventType: 'STOP', timestamp: stopTime }];
-    const content = this.createSessionContent(userId, allEvents, false, sessionDuration);
+    // Create completion summary without buttons
+    let content = `**Zeiterfassung für <@${userId}>**\n\n`;
+    content += `✅ **Session beendet**\n`;
+    content += `📊 **Session-Dauer:** ${this.formatTime(sessionDuration)}\n\n`;
+
+    // Get updated total stats
+    const userStats = await database.getUserStats(userId, guildId);
+    content += `🏆 **Gesamtzeit:** ${this.formatTime(userStats.totalTimeMs)}\n`;
+    content += `📈 **Sessions Gesamt:** ${userStats.sessionsCount}`;
 
     return {
       content,
@@ -86,7 +96,7 @@ export class SessionManager {
    */
   async pauseSession(userId, guildId) {
     const activeSession = await database.getActiveSession(userId, guildId);
-    if (!activeSession || activeSession.status !== 'ACTIVE') {
+    if (!activeSession || activeSession.status !== "ACTIVE") {
       return {
         content: "❌ Du hast keine aktive Session!",
         flags: InteractionResponseFlags.EPHEMERAL,
@@ -97,8 +107,13 @@ export class SessionManager {
     await database.pauseSession(userId, guildId, pauseTime);
     await this.updateOnlineList(guildId);
 
-    const allEvents = [...activeSession.events, { eventType: 'PAUSE', timestamp: pauseTime }];
-    const content = this.createSessionContent(userId, allEvents, true);
+    // Get fresh session data after pause
+    const updatedSession = await database.getActiveSession(userId, guildId);
+    const content = this.createSessionContent(
+      userId,
+      updatedSession.events,
+      false
+    );
 
     return {
       content,
@@ -112,7 +127,7 @@ export class SessionManager {
    */
   async resumeSession(userId, guildId) {
     const activeSession = await database.getActiveSession(userId, guildId);
-    if (!activeSession || activeSession.status !== 'PAUSED') {
+    if (!activeSession || activeSession.status !== "PAUSED") {
       return {
         content: "❌ Du hast keine pausierte Session!",
         flags: InteractionResponseFlags.EPHEMERAL,
@@ -123,8 +138,13 @@ export class SessionManager {
     await database.resumeSession(userId, guildId, resumeTime);
     await this.updateOnlineList(guildId);
 
-    const allEvents = [...activeSession.events, { eventType: 'RESUME', timestamp: resumeTime }];
-    const content = this.createSessionContent(userId, allEvents, true);
+    // Get fresh session data after resume
+    const updatedSession = await database.getActiveSession(userId, guildId);
+    const content = this.createSessionContent(
+      userId,
+      updatedSession.events,
+      true
+    );
 
     return {
       content,
@@ -138,14 +158,16 @@ export class SessionManager {
    */
   showExistingSession(activeSession) {
     const content = this.createSessionContent(
-      activeSession.userId, 
-      activeSession.events, 
-      activeSession.status === 'ACTIVE'
+      activeSession.userId,
+      activeSession.events,
+      activeSession.status === "ACTIVE"
     );
-    
+
     return {
       content,
-      components: [this.createSessionButtons(activeSession.status === 'ACTIVE')],
+      components: [
+        this.createSessionButtons(activeSession.status === "ACTIVE"),
+      ],
       flags: InteractionResponseFlags.EPHEMERAL,
     };
   }
@@ -156,7 +178,7 @@ export class SessionManager {
   createSessionContent(userId, events, isActive, finalDuration = null) {
     if (!events || events.length === 0) return "Keine Session-Daten gefunden.";
 
-    const startEvent = events.find(e => e.eventType === 'START');
+    const startEvent = events.find((e) => e.eventType === "START");
     if (!startEvent) return "Session-Start nicht gefunden.";
 
     let content = `**Zeiterfassung für <@${userId}>**\n\n`;
@@ -175,21 +197,21 @@ export class SessionManager {
 
     // Event history
     content += `**Session-Verlauf:**\n`;
-    events.forEach(event => {
+    events.forEach((event) => {
       const time = new Date(event.timestamp);
       const timeStr = `<t:${Math.floor(time.getTime() / 1000)}:t>`;
-      
+
       switch (event.eventType) {
-        case 'START':
+        case "START":
           content += `• ${timeStr} - Gestartet\n`;
           break;
-        case 'PAUSE':
+        case "PAUSE":
           content += `• ${timeStr} - Pausiert\n`;
           break;
-        case 'RESUME':
+        case "RESUME":
           content += `• ${timeStr} - Fortgesetzt\n`;
           break;
-        case 'STOP':
+        case "STOP":
           content += `• ${timeStr} - Beendet\n`;
           break;
       }
@@ -255,15 +277,29 @@ export class SessionManager {
 
       if (settings.liveMessageId) {
         try {
-          await editChannelMessage(settings.liveChannelId, settings.liveMessageId, { content });
+          await editChannelMessage(
+            settings.liveChannelId,
+            settings.liveMessageId,
+            { content }
+          );
         } catch (error) {
+          console.log(
+            `Failed to update online list message (${settings.liveMessageId}), creating new one:`,
+            error.message
+          );
           // Message deleted or error - create new one
-          const message = await sendChannelMessage(settings.liveChannelId, { content });
-          await database.setGuildSettings(guildId, { liveMessageId: message.id });
+          const message = await sendChannelMessage(settings.liveChannelId, {
+            content,
+          });
+          await database.setGuildSettings(guildId, {
+            liveMessageId: message.id,
+          });
         }
       } else {
         // Create first online list message
-        const message = await sendChannelMessage(settings.liveChannelId, { content });
+        const message = await sendChannelMessage(settings.liveChannelId, {
+          content,
+        });
         await database.setGuildSettings(guildId, { liveMessageId: message.id });
       }
     } catch (error) {
@@ -280,11 +316,13 @@ export class SessionManager {
     }
 
     let content = "**Online-Liste**\n\n";
-    
-    activeSessions.forEach(session => {
+
+    activeSessions.forEach((session) => {
       const duration = database.calculateSessionDuration(session.events);
-      const status = session.status === 'ACTIVE' ? '' : ' (pausiert)';
-      content += `<@${session.userId}> - ${this.formatTime(duration)}${status}\n`;
+      const status = session.status === "ACTIVE" ? "" : " (pausiert)";
+      content += `<@${session.userId}> - ${this.formatTime(
+        duration
+      )}${status}\n`;
     });
 
     content += `\n*${activeSessions.length} Benutzer online*`;
@@ -296,16 +334,19 @@ export class SessionManager {
    */
   async getUserStats(targetUserId, guildId) {
     const stats = await database.getUserStats(targetUserId, guildId);
-    
-    const avgTime = stats.sessionsCount > 0 ? stats.totalTimeMs / stats.sessionsCount : 0;
-    
+
+    const avgTime =
+      stats.sessionsCount > 0 ? stats.totalTimeMs / stats.sessionsCount : 0;
+
     let content = `**Statistiken für <@${targetUserId}>**\n\n`;
     content += `📊 **Gesamtzeit:** ${this.formatTime(stats.totalTimeMs)}\n`;
     content += `🎮 **Sessions:** ${stats.sessionsCount}\n`;
     content += `📈 **Durchschnitt:** ${this.formatTime(avgTime)}\n`;
 
     if (stats.lastSeen) {
-      const lastSeen = `<t:${Math.floor(new Date(stats.lastSeen).getTime() / 1000)}:R>`;
+      const lastSeen = `<t:${Math.floor(
+        new Date(stats.lastSeen).getTime() / 1000
+      )}:R>`;
       content += `👀 **Zuletzt:** ${lastSeen}`;
     }
 
@@ -317,17 +358,26 @@ export class SessionManager {
    */
   async getLeaderboard(guildId, limit = 10) {
     const leaderboard = await database.getLeaderboard(guildId, limit);
-    
+
     if (leaderboard.length === 0) {
       return "**Leaderboard**\n\nNoch keine Daten vorhanden.";
     }
 
     let content = "**Leaderboard - Top Spieler**\n\n";
-    
+
     leaderboard.forEach((entry, index) => {
       const position = index + 1;
-      const medal = position === 1 ? "🥇" : position === 2 ? "🥈" : position === 3 ? "🥉" : `${position}.`;
-      content += `${medal} <@${entry.userId}> - ${this.formatTime(entry.totalTimeMs)} (${entry.sessionsCount} Sessions)\n`;
+      const medal =
+        position === 1
+          ? "🥇"
+          : position === 2
+          ? "🥈"
+          : position === 3
+          ? "🥉"
+          : `${position}.`;
+      content += `${medal} <@${entry.userId}> - ${this.formatTime(
+        entry.totalTimeMs
+      )} (${entry.sessionsCount} Sessions)\n`;
     });
 
     return content;
